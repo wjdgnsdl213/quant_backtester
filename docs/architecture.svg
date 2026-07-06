@@ -1,0 +1,95 @@
+<svg width="960" height="620" viewBox="0 0 960 620" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI', 'Malgun Gothic', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7a7a72"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="960" height="620" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="480" y="34" text-anchor="middle" font-size="18" font-weight="700" fill="#0b0b0b">퀀트 백테스트 대시보드 — 시스템 아키텍처</text>
+
+  <!-- Browser -->
+  <rect x="40" y="70" width="220" height="90" rx="10" fill="#fcfcfb" stroke="#c3c2b7" stroke-width="1.5"/>
+  <text x="150" y="100" text-anchor="middle" font-size="14" font-weight="700" fill="#0b0b0b">브라우저</text>
+  <text x="150" y="122" text-anchor="middle" font-size="11.5" fill="#52514e">Next.js 16 · React 19</text>
+  <text x="150" y="140" text-anchor="middle" font-size="11.5" fill="#52514e">recharts · lightweight-charts</text>
+
+  <!-- Web app internals -->
+  <rect x="320" y="70" width="280" height="130" rx="10" fill="#fcfcfb" stroke="#c3c2b7" stroke-width="1.5"/>
+  <text x="460" y="98" text-anchor="middle" font-size="13.5" font-weight="700" fill="#0b0b0b">apps/web</text>
+  <text x="460" y="120" text-anchor="middle" font-size="11" fill="#52514e">StrategyForm · BlockBuilder · DslEditor</text>
+  <text x="460" y="138" text-anchor="middle" font-size="11" fill="#52514e">EquityChart · CandleChart · CompareView</text>
+  <text x="460" y="156" text-anchor="middle" font-size="11" fill="#52514e">OptimizeTable · WalkforwardView</text>
+  <text x="460" y="178" text-anchor="middle" font-size="10.5" fill="#898781">lib/api.ts (fetch client)</text>
+
+  <!-- Arrow browser -> web -->
+  <line x1="260" y1="115" x2="316" y2="115" stroke="#7a7a72" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- HTTP JSON label + arrow web -> engine -->
+  <text x="700" y="105" text-anchor="middle" font-size="11" fill="#898781">HTTP / JSON</text>
+  <line x1="600" y1="130" x2="700" y2="130" stroke="#7a7a72" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="700" y1="130" x2="700" y2="240" stroke="#7a7a72" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Engine box -->
+  <rect x="560" y="240" width="360" height="280" rx="12" fill="#eef4fb" stroke="#2a78d6" stroke-width="1.75"/>
+  <text x="740" y="270" text-anchor="middle" font-size="14.5" font-weight="700" fill="#0b0b0b">apps/engine — FastAPI</text>
+  <text x="740" y="290" text-anchor="middle" font-size="10.5" fill="#52514e">main.py (REST 엔드포인트)</text>
+
+  <rect x="580" y="304" width="150" height="52" rx="8" fill="#ffffff" stroke="#c3c2b7"/>
+  <text x="655" y="323" text-anchor="middle" font-size="11" font-weight="600" fill="#0b0b0b">backtester.py</text>
+  <text x="655" y="340" text-anchor="middle" font-size="9.5" fill="#898781">벡터화 손익 계산</text>
+
+  <rect x="740" y="304" width="160" height="52" rx="8" fill="#ffffff" stroke="#c3c2b7"/>
+  <text x="820" y="323" text-anchor="middle" font-size="11" font-weight="600" fill="#0b0b0b">dsl/*</text>
+  <text x="820" y="340" text-anchor="middle" font-size="9.5" fill="#898781">schema·compiler·indicators (지표 계산 벡터화, 포지션 전환은 봉 순회)</text>
+
+  <rect x="580" y="364" width="150" height="52" rx="8" fill="#ffffff" stroke="#c3c2b7"/>
+  <text x="655" y="383" text-anchor="middle" font-size="11" font-weight="600" fill="#0b0b0b">strategies.py</text>
+  <text x="655" y="400" text-anchor="middle" font-size="9.5" fill="#898781">프리셋 5종</text>
+
+  <rect x="740" y="364" width="160" height="52" rx="8" fill="#ffffff" stroke="#c3c2b7"/>
+  <text x="820" y="383" text-anchor="middle" font-size="11" font-weight="600" fill="#0b0b0b">optimizer · walkforward</text>
+  <text x="820" y="400" text-anchor="middle" font-size="9.5" fill="#898781">그리드 서치 · 폴드 재검증</text>
+
+  <rect x="580" y="424" width="150" height="52" rx="8" fill="#ffffff" stroke="#c3c2b7"/>
+  <text x="655" y="443" text-anchor="middle" font-size="11" font-weight="600" fill="#0b0b0b">metrics.py</text>
+  <text x="655" y="460" text-anchor="middle" font-size="9.5" fill="#898781">IS/OOS 과적합 판정</text>
+
+  <rect x="740" y="424" width="160" height="52" rx="8" fill="#ffffff" stroke="#c3c2b7"/>
+  <text x="820" y="443" text-anchor="middle" font-size="11" font-weight="600" fill="#0b0b0b">ai.py</text>
+  <text x="820" y="460" text-anchor="middle" font-size="9.5" fill="#898781">자연어 → 전략 DSL</text>
+
+  <!-- External: market data -->
+  <rect x="40" y="240" width="220" height="100" rx="10" fill="#fcfcfb" stroke="#c3c2b7" stroke-width="1.5"/>
+  <text x="150" y="266" text-anchor="middle" font-size="13" font-weight="700" fill="#0b0b0b">시세 데이터</text>
+  <text x="150" y="288" text-anchor="middle" font-size="11" fill="#52514e">yfinance (주식)</text>
+  <text x="150" y="306" text-anchor="middle" font-size="11" fill="#52514e">ccxt · 바이낸스 (크립토)</text>
+  <text x="150" y="326" text-anchor="middle" font-size="10" fill="#898781">→ data/cache/*.csv 로 캐시</text>
+
+  <!-- Arrow engine -> market data (data/loader.py) -->
+  <line x1="580" y1="290" x2="264" y2="290" stroke="#7a7a72" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="420" y="280" text-anchor="middle" font-size="10" fill="#898781">data/loader.py</text>
+
+  <!-- External: Anthropic -->
+  <rect x="40" y="370" width="220" height="90" rx="10" fill="#fcfcfb" stroke="#c3c2b7" stroke-width="1.5"/>
+  <text x="150" y="398" text-anchor="middle" font-size="13" font-weight="700" fill="#0b0b0b">Anthropic API</text>
+  <text x="150" y="420" text-anchor="middle" font-size="11" fill="#52514e">Claude Opus 4.8</text>
+  <text x="150" y="440" text-anchor="middle" font-size="10" fill="#898781">전략 DSL 생성 + 검증 재시도</text>
+
+  <line x1="580" y1="440" x2="264" y2="415" stroke="#7a7a72" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- External: SQLite -->
+  <rect x="40" y="480" width="220" height="90" rx="10" fill="#fcfcfb" stroke="#c3c2b7" stroke-width="1.5"/>
+  <text x="150" y="508" text-anchor="middle" font-size="13" font-weight="700" fill="#0b0b0b">SQLite</text>
+  <text x="150" y="530" text-anchor="middle" font-size="11" fill="#52514e">storage/strategies.db</text>
+  <text x="150" y="550" text-anchor="middle" font-size="10" fill="#898781">저장된 전략 (store.py)</text>
+
+  <line x1="580" y1="440" x2="264" y2="525" stroke="#7a7a72" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Legend -->
+  <text x="740" y="500" text-anchor="middle" font-size="10.5" fill="#898781">POST /backtest · /optimize · /walkforward · /compare</text>
+  <text x="740" y="516" text-anchor="middle" font-size="10.5" fill="#898781">POST /ai/generate · /dsl/validate</text>
+  <text x="740" y="532" text-anchor="middle" font-size="10.5" fill="#898781">GET/POST/DELETE /strategies/saved</text>
+</svg>
