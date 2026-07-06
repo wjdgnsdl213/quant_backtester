@@ -14,6 +14,20 @@ import {
   type StrategyMeta,
 } from "@/lib/api";
 import BlockBuilder from "@/components/BlockBuilder";
+import DslEditor from "@/components/DslEditor";
+import { downloadJson } from "@/lib/export";
+
+export type OptimizeOpts = {
+  grid: Record<string, number[]> | null;
+  sortBy: "is_sharpe" | "is_return_pct" | "total_return_pct" | "mdd_pct";
+};
+
+const SORT_OPTIONS: { v: OptimizeOpts["sortBy"]; label: string }[] = [
+  { v: "is_sharpe", label: "학습(IS) 샤프" },
+  { v: "is_return_pct", label: "학습(IS) 수익률" },
+  { v: "total_return_pct", label: "전체 수익률" },
+  { v: "mdd_pct", label: "MDD 얕은 순" },
+];
 
 export type FormState = {
   source: "stock" | "crypto";
@@ -58,16 +72,22 @@ export default function StrategyForm({
   optimizing,
   onCompare,
   comparing,
+  advanced,
+  onWalkforward,
+  walkforwarding,
 }: {
   strategies: StrategyMeta[];
   form: FormState;
   onChange: (f: FormState) => void;
   onRun: () => void;
   loading: boolean;
-  onOptimize: () => void;
+  onOptimize: (opts: OptimizeOpts) => void;
   optimizing: boolean;
   onCompare: (ids: number[]) => void;
   comparing: boolean;
+  advanced: boolean;
+  onWalkforward: (opts: { grid: Record<string, number[]> | null; nFolds: number }) => void;
+  walkforwarding: boolean;
 }) {
   const selected = strategies.find((s) => s.id === form.strategy);
 
@@ -81,6 +101,27 @@ export default function StrategyForm({
 
   const [indicators, setIndicators] = useState<IndicatorSpec[]>([]);
   const [builderOpen, setBuilderOpen] = useState(false);
+  const [dslEditorOpen, setDslEditorOpen] = useState(false);
+
+  // 고급 모드: 커스텀 그리드 (파라미터별 쉼표 구분 값), 정렬, 워크포워드 폴드 수
+  const [gridText, setGridText] = useState<Record<string, string>>({});
+  const [sortBy, setSortBy] = useState<OptimizeOpts["sortBy"]>("is_sharpe");
+  const [nFolds, setNFolds] = useState(4);
+
+  const parseGrid = (): Record<string, number[]> | null => {
+    if (!advanced || !selected) return null;
+    const grid: Record<string, number[]> = {};
+    for (const p of selected.params) {
+      const text = gridText[p.key]?.trim();
+      if (!text) continue;
+      const values = text
+        .split(",")
+        .map((v) => Number(v.trim()))
+        .filter((v) => Number.isFinite(v));
+      if (values.length > 0) grid[p.key] = values;
+    }
+    return Object.keys(grid).length > 0 ? grid : null;
+  };
 
   useEffect(() => {
     fetchSavedStrategies().then(setSaved).catch(() => {});
@@ -298,7 +339,7 @@ export default function StrategyForm({
           onChange={(e) => setAiPrompt(e.target.value)}
           disabled={aiLoading}
         />
-        <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+        <div className={`mt-1.5 grid gap-1.5 ${advanced ? "grid-cols-3" : "grid-cols-2"}`}>
           <button
             type="button"
             onClick={onGenerate}
@@ -313,8 +354,17 @@ export default function StrategyForm({
             disabled={indicators.length === 0}
             className="rounded-md border border-black/20 px-2 py-1.5 text-sm font-medium text-neutral-700 transition-opacity hover:opacity-80 disabled:opacity-40 dark:border-white/20 dark:text-neutral-200"
           >
-            블록으로 조립
+            블록 조립
           </button>
+          {advanced && (
+            <button
+              type="button"
+              onClick={() => setDslEditorOpen(true)}
+              className="rounded-md border border-black/20 px-2 py-1.5 text-sm font-medium text-neutral-700 transition-opacity hover:opacity-80 dark:border-white/20 dark:text-neutral-200"
+            >
+              JSON 편집
+            </button>
+          )}
         </div>
         {aiError && (
           <p className="mt-1.5 text-xs leading-relaxed text-[#d03b3b]">{aiError}</p>
@@ -347,6 +397,25 @@ export default function StrategyForm({
             <p className="mt-1.5 text-[11px] text-[#2a78d6] dark:text-[#3987e5]">
               백테스트 실행 시 위 프리셋 대신 이 전략이 사용됩니다
             </p>
+            {advanced && (
+              <details className="mt-1.5">
+                <summary className="cursor-pointer text-[11px] text-neutral-500">
+                  DSL JSON 보기
+                </summary>
+                <pre className="mt-1 max-h-48 overflow-auto rounded bg-black/5 p-2 text-[10px] leading-relaxed dark:bg-white/10">
+                  {JSON.stringify(form.ai.dsl, null, 2)}
+                </pre>
+                <button
+                  type="button"
+                  onClick={() =>
+                    downloadJson(`strategy_${form.ai!.name.replace(/\s+/g, "_")}.json`, form.ai!.dsl)
+                  }
+                  className="mt-1 text-[11px] text-[#2a78d6] hover:opacity-80 dark:text-[#3987e5]"
+                >
+                  전략 JSON 다운로드
+                </button>
+              </details>
+            )}
           </div>
         )}
       </div>
@@ -479,15 +548,89 @@ export default function StrategyForm({
         {loading ? "백테스트 실행 중…" : "백테스트 실행"}
       </button>
 
+      {advanced && selected && !form.ai && (
+        <details className="rounded-md border border-black/10 dark:border-white/10 p-3">
+          <summary className="cursor-pointer text-xs font-medium text-neutral-500">
+            고급: 최적화 그리드 · 워크포워드
+          </summary>
+          <div className="mt-2 flex flex-col gap-2">
+            <p className="text-[11px] leading-relaxed text-neutral-500">
+              파라미터별 시험할 값을 쉼표로 입력하세요 (비우면 자동 생성, 최대 10개 · 총 300조합)
+            </p>
+            {selected.params.map((p) => (
+              <div key={p.key}>
+                <label className={labelCls} htmlFor={`grid-${p.key}`}>
+                  {p.label} <span className="font-normal">({p.min}~{p.max})</span>
+                </label>
+                <input
+                  id={`grid-${p.key}`}
+                  className={inputCls}
+                  placeholder="자동"
+                  spellCheck={false}
+                  value={gridText[p.key] ?? ""}
+                  onChange={(e) =>
+                    setGridText({ ...gridText, [p.key]: e.target.value })
+                  }
+                />
+              </div>
+            ))}
+            <div>
+              <label className={labelCls} htmlFor="opt-sort">최적화 정렬 기준</label>
+              <select
+                id="opt-sort"
+                className={inputCls}
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as OptimizeOpts["sortBy"])}
+              >
+                {SORT_OPTIONS.map((o) => (
+                  <option key={o.v} value={o.v}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls} htmlFor="wf-folds">워크포워드 폴드 수 (2~8)</label>
+              <input
+                id="wf-folds"
+                type="number"
+                min={2}
+                max={8}
+                step={1}
+                className={inputCls}
+                value={nFolds}
+                onChange={(e) =>
+                  setNFolds(Math.max(2, Math.min(8, Number(e.target.value) || 4)))
+                }
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => onWalkforward({ grid: parseGrid(), nFolds })}
+              disabled={walkforwarding || !form.symbol.trim()}
+              className="rounded-md border border-black/20 px-3 py-1.5 text-xs font-medium text-neutral-700 transition-opacity hover:opacity-80 disabled:opacity-40 dark:border-white/20 dark:text-neutral-200"
+            >
+              {walkforwarding ? "워크포워드 분석 중…" : "워크포워드 분석 (폴드별 재최적화)"}
+            </button>
+          </div>
+        </details>
+      )}
+
       <button
         type="button"
-        onClick={onOptimize}
+        onClick={() => onOptimize({ grid: parseGrid(), sortBy })}
         disabled={optimizing || !!form.ai || !form.symbol.trim()}
         title={form.ai ? "최적화는 프리셋 전략에서만 가능합니다 (AI/커스텀 전략 해제 후 사용)" : undefined}
         className="rounded-md border border-black/20 px-4 py-2 text-sm font-medium text-neutral-700 transition-opacity hover:opacity-80 disabled:opacity-40 dark:border-white/20 dark:text-neutral-200"
       >
         {optimizing ? "파라미터 최적화 중…" : "파라미터 최적화 (그리드 서치)"}
       </button>
+
+      {dslEditorOpen && (
+        <DslEditor
+          initial={form.ai}
+          onApply={(g) => onChange({ ...form, ai: g })}
+          onClose={() => setDslEditorOpen(false)}
+        />
+      )}
 
       {builderOpen && (
         <BlockBuilder

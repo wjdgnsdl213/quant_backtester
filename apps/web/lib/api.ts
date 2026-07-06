@@ -186,10 +186,45 @@ export async function validateDsl(dsl: StrategyDSL): Promise<GeneratedStrategy> 
   return postJson("/dsl/validate", { dsl }, "전략 검증 실패");
 }
 
-export type OptimizeRequest = Omit<BacktestRequest, "params" | "dsl">;
+export type OptimizeRequest = Omit<BacktestRequest, "params" | "dsl"> & {
+  grid?: Record<string, number[]> | null;
+  sort_by?: "is_sharpe" | "is_return_pct" | "total_return_pct" | "mdd_pct";
+};
 
 export async function runOptimize(req: OptimizeRequest): Promise<OptimizeResult> {
   return postJson("/optimize", req, "최적화 실패");
+}
+
+export type WalkforwardFold = {
+  fold: number;
+  train_start: string;
+  train_end: string;
+  test_start: string;
+  test_end: string;
+  best_params: Record<string, number>;
+  is_sharpe: number;
+  oos: { return_pct: number; sharpe: number; mdd_pct: number };
+};
+
+export type WalkforwardResult = {
+  strategy: StrategyMeta;
+  n_folds: number;
+  folds: WalkforwardFold[];
+  oos: {
+    return_pct: number;
+    sharpe: number;
+    mdd_pct: number;
+    positive_folds: number;
+    verdict: string;
+  };
+  series: { time: string[]; equity: number[] };
+  note: string;
+};
+
+export type WalkforwardRequest = OptimizeRequest & { n_folds?: number };
+
+export async function runWalkforward(req: WalkforwardRequest): Promise<WalkforwardResult> {
+  return postJson("/walkforward", req, "워크포워드 분석 실패");
 }
 
 export type CompareRequest = {

@@ -7,13 +7,18 @@ import {
   runBacktest,
   runCompare,
   runOptimize,
+  runWalkforward,
   type BacktestResult,
   type CompareResult,
   type OptimizeResult,
   type StrategyMeta,
+  type WalkforwardResult,
 } from "@/lib/api";
+import { downloadJson, downloadText, tradesToCsv } from "@/lib/export";
 import CompareView from "@/components/CompareView";
 import OptimizeTable from "@/components/OptimizeTable";
+import WalkforwardView from "@/components/WalkforwardView";
+import { type OptimizeOpts } from "@/components/StrategyForm";
 import CandleChart from "@/components/CandleChart";
 import DrawdownChart from "@/components/DrawdownChart";
 import EquityChart from "@/components/EquityChart";
@@ -78,6 +83,19 @@ export default function Home() {
   const [optimizing, setOptimizing] = useState(false);
   const [cmpResult, setCmpResult] = useState<CompareResult | null>(null);
   const [comparing, setComparing] = useState(false);
+  const [wfResult, setWfResult] = useState<WalkforwardResult | null>(null);
+  const [walkforwarding, setWalkforwarding] = useState(false);
+
+  const [advanced, setAdvanced] = useState(false);
+  useEffect(() => {
+    setAdvanced(localStorage.getItem("advancedMode") === "1");
+  }, []);
+  const toggleAdvanced = () => {
+    setAdvanced((v) => {
+      localStorage.setItem("advancedMode", v ? "0" : "1");
+      return !v;
+    });
+  };
 
   useEffect(() => {
     fetchStrategies()
@@ -113,7 +131,7 @@ export default function Home() {
 
   const onRun = () => runWith(form);
 
-  const onOptimize = async () => {
+  const onOptimize = async (opts: OptimizeOpts) => {
     setOptimizing(true);
     setError(null);
     try {
@@ -128,12 +146,43 @@ export default function Home() {
           fee: form.fee,
           slippage: form.slippage,
           initial_capital: form.initial_capital,
+          grid: opts.grid,
+          sort_by: opts.sortBy,
         }),
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "최적화에 실패했습니다");
     } finally {
       setOptimizing(false);
+    }
+  };
+
+  const onWalkforward = async (opts: {
+    grid: Record<string, number[]> | null;
+    nFolds: number;
+  }) => {
+    setWalkforwarding(true);
+    setError(null);
+    try {
+      setWfResult(
+        await runWalkforward({
+          source: form.source,
+          symbol: form.symbol,
+          interval: form.interval,
+          start: form.start,
+          end: form.end,
+          strategy: form.strategy,
+          fee: form.fee,
+          slippage: form.slippage,
+          initial_capital: form.initial_capital,
+          grid: opts.grid,
+          n_folds: opts.nFolds,
+        }),
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "워크포워드 분석에 실패했습니다");
+    } finally {
+      setWalkforwarding(false);
     }
   };
 
@@ -169,11 +218,31 @@ export default function Home() {
 
   return (
     <div className="min-h-screen w-full bg-[#f9f9f7] text-[#0b0b0b] dark:bg-[#0d0d0d] dark:text-white">
-      <header className="border-b border-black/10 px-6 py-4 dark:border-white/10">
-        <h1 className="text-lg font-bold">퀀트 백테스트 대시보드</h1>
-        <p className="text-xs text-neutral-500">
-          주식·크립토 시세에 전략을 적용해 성과를 검증합니다
-        </p>
+      <header className="flex items-center justify-between border-b border-black/10 px-6 py-4 dark:border-white/10">
+        <div>
+          <h1 className="text-lg font-bold">퀀트 백테스트 대시보드</h1>
+          <p className="text-xs text-neutral-500">
+            주식·크립토 시세에 전략을 적용해 성과를 검증합니다
+          </p>
+        </div>
+        <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-neutral-500">
+          고급 모드
+          <button
+            type="button"
+            role="switch"
+            aria-checked={advanced}
+            onClick={toggleAdvanced}
+            className={`relative h-5 w-9 rounded-full transition-colors ${
+              advanced ? "bg-[#2a78d6] dark:bg-[#3987e5]" : "bg-black/20 dark:bg-white/20"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${
+                advanced ? "left-[18px]" : "left-0.5"
+              }`}
+            />
+          </button>
+        </label>
       </header>
 
       <main className="mx-auto flex w-full max-w-screen-2xl flex-col gap-4 p-4 lg:flex-row lg:p-6">
@@ -199,6 +268,9 @@ export default function Home() {
                 optimizing={optimizing}
                 onCompare={onCompare}
                 comparing={comparing}
+                advanced={advanced}
+                onWalkforward={onWalkforward}
+                walkforwarding={walkforwarding}
               />
             )}
           </Card>
@@ -220,6 +292,20 @@ export default function Home() {
             </Card>
           )}
 
+          {wfResult && (
+            <Card
+              title={`워크포워드 분석 — ${wfResult.strategy.name}`}
+              onClose={() => setWfResult(null)}
+            >
+              <WalkforwardView
+                result={wfResult}
+                paramLabels={Object.fromEntries(
+                  wfResult.strategy.params.map((p) => [p.key, p.label]),
+                )}
+              />
+            </Card>
+          )}
+
           {optResult && (
             <Card
               title={`파라미터 최적화 — ${optResult.strategy.name}`}
@@ -236,7 +322,7 @@ export default function Home() {
             </Card>
           )}
 
-          {!result && !error && !optResult && !cmpResult && (
+          {!result && !error && !optResult && !cmpResult && !wfResult && (
             <Card>
               <p className="py-16 text-center text-sm text-neutral-500">
                 왼쪽에서 종목과 전략을 선택하고 백테스트를 실행하세요.
@@ -247,6 +333,33 @@ export default function Home() {
           {result && (
             <>
               <MetricsCards metrics={result.metrics} />
+              {advanced && (
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="text-neutral-500">내보내기:</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      downloadText(
+                        `trades_${result.symbol.replace("/", "-")}.csv`,
+                        tradesToCsv(result.trades),
+                        "text/csv",
+                      )
+                    }
+                    className="rounded border border-black/20 px-2 py-1 font-medium text-neutral-700 hover:opacity-80 dark:border-white/20 dark:text-neutral-200"
+                  >
+                    거래 내역 CSV
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      downloadJson(`backtest_${result.symbol.replace("/", "-")}.json`, result)
+                    }
+                    className="rounded border border-black/20 px-2 py-1 font-medium text-neutral-700 hover:opacity-80 dark:border-white/20 dark:text-neutral-200"
+                  >
+                    결과 전체 JSON
+                  </button>
+                </div>
+              )}
               <Card title="과적합 진단 (In-Sample / Out-of-Sample)">
                 <OverfitCard split={result.split} />
               </Card>

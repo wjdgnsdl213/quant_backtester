@@ -7,7 +7,8 @@
 - POST /backtest    프리셋(strategy+params) 또는 커스텀 DSL(dsl)로 백테스트 실행
 - POST /ai/generate 자연어 → 전략 DSL 생성 (ANTHROPIC_API_KEY 필요)
 - GET/POST/DELETE /strategies/saved  전략 저장소 (SQLite)
-- POST /optimize    프리셋 파라미터 그리드 서치 (IS 순위 + OOS 검증)
+- POST /optimize    프리셋 파라미터 그리드 서치 (IS 순위 + OOS 검증, 커스텀 그리드/정렬 지원)
+- POST /walkforward 워크포워드 분석 (폴드별 재최적화 → 미래 구간 검증)
 - POST /compare     저장된 전략들을 같은 조건에서 일괄 백테스트
 - POST /dsl/validate 블록 빌더용 DSL 검증·요약
 """
@@ -25,6 +26,7 @@ import metrics
 import optimizer
 import store
 import strategies
+import walkforward
 from data import loader
 from dsl import compiler, indicators
 from dsl.describe import describe
@@ -150,6 +152,8 @@ class OptimizeRequest(BaseModel):
     fee: float = Field(0.001, ge=0, le=0.02)
     slippage: float = Field(0.0005, ge=0, le=0.02)
     initial_capital: float = Field(10_000_000, gt=0)
+    grid: dict[str, list[float]] | None = None  # 고급 모드: 파라미터별 값 목록 직접 지정
+    sort_by: str = "is_sharpe"
 
 
 @app.post("/optimize")
@@ -158,7 +162,28 @@ def run_optimize(req: OptimizeRequest):
         raise HTTPException(400, f"알 수 없는 전략: {req.strategy} (최적화는 프리셋 전략만 지원)")
     df = _load_df(req.source, req.symbol, req.interval, req.start, req.end)
     ppy = metrics.periods_per_year(req.source, req.interval)
-    return optimizer.optimize(req.strategy, df, req.fee, req.slippage, req.initial_capital, ppy)
+    try:
+        return optimizer.optimize(req.strategy, df, req.fee, req.slippage,
+                                  req.initial_capital, ppy, req.grid, req.sort_by)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+class WalkforwardRequest(OptimizeRequest):
+    n_folds: int = Field(4, ge=2, le=8)
+
+
+@app.post("/walkforward")
+def run_walkforward(req: WalkforwardRequest):
+    if req.strategy not in strategies.PRESETS:
+        raise HTTPException(400, f"알 수 없는 전략: {req.strategy} (워크포워드는 프리셋 전략만 지원)")
+    df = _load_df(req.source, req.symbol, req.interval, req.start, req.end)
+    ppy = metrics.periods_per_year(req.source, req.interval)
+    try:
+        return walkforward.run(req.strategy, df, req.fee, req.slippage,
+                               req.initial_capital, ppy, req.n_folds, req.grid)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 class CompareRequest(BaseModel):
