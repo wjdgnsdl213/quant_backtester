@@ -11,19 +11,7 @@ import {
 } from "recharts";
 
 import type { CompareResult } from "@/lib/api";
-import { fmtDate, fmtMoney, fmtSigned, useVizTheme } from "@/lib/viz";
-
-// 비교선 팔레트 (최대 8개, light/dark 공용으로 무난한 톤)
-const SERIES_COLORS = [
-  "#2a78d6",
-  "#e34948",
-  "#2e9e5b",
-  "#d99a2b",
-  "#8b5cf6",
-  "#0ea5b7",
-  "#d6569c",
-  "#7a7a24",
-];
+import { fmtDate, fmtMoney, fmtSigned, SERIES_COLORS, useVizTheme } from "@/lib/viz";
 
 export default function CompareView({ result }: { result: CompareResult }) {
   const viz = useVizTheme();

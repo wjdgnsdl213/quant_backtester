@@ -6,16 +6,23 @@ import {
   fetchStrategies,
   runBacktest,
   runCompare,
+  runMonteCarlo,
+  runMultiSymbol,
   runOptimize,
   runWalkforward,
   type BacktestResult,
   type CompareResult,
+  type MonteCarloResult,
+  type MultiSymbolResult,
   type OptimizeResult,
   type StrategyMeta,
   type WalkforwardResult,
 } from "@/lib/api";
 import { downloadJson, downloadText, tradesToCsv } from "@/lib/export";
 import CompareView from "@/components/CompareView";
+import MonteCarloView from "@/components/MonteCarloView";
+import MultiSymbolView from "@/components/MultiSymbolView";
+import OptimizeHeatmap from "@/components/OptimizeHeatmap";
 import OptimizeTable from "@/components/OptimizeTable";
 import WalkforwardView from "@/components/WalkforwardView";
 import { type OptimizeOpts } from "@/components/StrategyForm";
@@ -85,6 +92,10 @@ export default function Home() {
   const [comparing, setComparing] = useState(false);
   const [wfResult, setWfResult] = useState<WalkforwardResult | null>(null);
   const [walkforwarding, setWalkforwarding] = useState(false);
+  const [mcResult, setMcResult] = useState<MonteCarloResult | null>(null);
+  const [montecarloing, setMontecarloing] = useState(false);
+  const [msResult, setMsResult] = useState<MultiSymbolResult | null>(null);
+  const [multiSymboling, setMultiSymboling] = useState(false);
 
   const [advanced, setAdvanced] = useState(false);
   useEffect(() => {
@@ -192,6 +203,50 @@ export default function Home() {
     runWith(next);
   };
 
+  const onMonteCarlo = async () => {
+    setMontecarloing(true);
+    setError(null);
+    try {
+      const { ai, ...rest } = form;
+      setMcResult(
+        await runMonteCarlo(
+          ai ? { ...rest, strategy: "custom", dsl: ai.dsl } : rest,
+        ),
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "몬테카를로 시뮬레이션에 실패했습니다");
+    } finally {
+      setMontecarloing(false);
+    }
+  };
+
+  const onMultiSymbol = async (symbols: string[]) => {
+    setMultiSymboling(true);
+    setError(null);
+    try {
+      const { ai } = form;
+      setMsResult(
+        await runMultiSymbol({
+          source: form.source,
+          symbols,
+          interval: form.interval,
+          start: form.start,
+          end: form.end,
+          strategy: ai ? "custom" : form.strategy,
+          params: form.params,
+          dsl: ai?.dsl ?? null,
+          fee: form.fee,
+          slippage: form.slippage,
+          initial_capital: form.initial_capital,
+        }),
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "멀티 심볼 검증에 실패했습니다");
+    } finally {
+      setMultiSymboling(false);
+    }
+  };
+
   const onCompare = async (ids: number[]) => {
     setComparing(true);
     setError(null);
@@ -271,6 +326,10 @@ export default function Home() {
                 advanced={advanced}
                 onWalkforward={onWalkforward}
                 walkforwarding={walkforwarding}
+                onMonteCarlo={onMonteCarlo}
+                montecarloing={montecarloing}
+                onMultiSymbol={onMultiSymbol}
+                multiSymboling={multiSymboling}
               />
             )}
           </Card>
@@ -289,6 +348,24 @@ export default function Home() {
               onClose={() => setCmpResult(null)}
             >
               <CompareView result={cmpResult} />
+            </Card>
+          )}
+
+          {msResult && (
+            <Card
+              title={`멀티 심볼 검증 — ${msResult.strategy.name}`}
+              onClose={() => setMsResult(null)}
+            >
+              <MultiSymbolView result={msResult} />
+            </Card>
+          )}
+
+          {mcResult && (
+            <Card
+              title={`몬테카를로 — ${mcResult.strategy.name} (${mcResult.n_sims.toLocaleString()}회 시뮬레이션)`}
+              onClose={() => setMcResult(null)}
+            >
+              <MonteCarloView result={mcResult} />
             </Card>
           )}
 
@@ -319,10 +396,18 @@ export default function Home() {
                 onApply={onApplyParams}
                 applying={loading}
               />
+              {optResult.all_results && (
+                <OptimizeHeatmap
+                  all={optResult.all_results}
+                  paramLabels={Object.fromEntries(
+                    optResult.strategy.params.map((p) => [p.key, p.label]),
+                  )}
+                />
+              )}
             </Card>
           )}
 
-          {!result && !error && !optResult && !cmpResult && !wfResult && (
+          {!result && !error && !optResult && !cmpResult && !wfResult && !mcResult && !msResult && (
             <Card>
               <p className="py-16 text-center text-sm text-neutral-500">
                 왼쪽에서 종목과 전략을 선택하고 백테스트를 실행하세요.

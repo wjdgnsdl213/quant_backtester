@@ -63,3 +63,15 @@ export function fmtDate(iso: string): string {
 export function fmtSigned(v: number, digits = 2): string {
   return `${v > 0 ? "+" : ""}${v.toFixed(digits)}`;
 }
+
+// 다중 시리즈 오버레이 팔레트 (최대 8개, light/dark 공용)
+export const SERIES_COLORS = [
+  "#2a78d6",
+  "#e34948",
+  "#2e9e5b",
+  "#d99a2b",
+  "#8b5cf6",
+  "#0ea5b7",
+  "#d6569c",
+  "#7a7a24",
+];

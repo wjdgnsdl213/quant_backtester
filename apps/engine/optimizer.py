@@ -154,4 +154,9 @@ def optimize(preset_id: str, df: pd.DataFrame, fee: float, slippage: float,
         "sort_by": sort_by,
         "note": f"순위는 {SORT_KEYS[sort_by]} 기준입니다. 검증 구간(OOS) 성과가 무너지는 조합은 과적합을 의심하세요.",
         "results": rows[:TOP_N],
+        # 히트맵용 전체 결과 (파라미터 지형 시각화)
+        "all_results": [
+            {k: r[k] for k in ("params", "is_sharpe", "oos_sharpe", "total_return_pct", "mdd_pct")}
+            for r in rows
+        ],
     }

@@ -46,7 +46,9 @@ def _rsi(df: pd.DataFrame, p: dict) -> pd.Series:
     gain = delta.clip(lower=0).ewm(alpha=1 / period, min_periods=period).mean()
     loss = (-delta.clip(upper=0)).ewm(alpha=1 / period, min_periods=period).mean()
     rs = gain / loss.replace(0, np.nan)
-    return 100 - 100 / (1 + rs)
+    rsi = 100 - 100 / (1 + rs)
+    # 하락이 전혀 없는 구간은 정의상 RSI=100 (NaN으로 두면 상승장에서 매도 조건이 침묵)
+    return rsi.mask((loss == 0) & (gain > 0), 100.0)
 
 
 def _bb(df: pd.DataFrame, p: dict, which: str) -> pd.Series:

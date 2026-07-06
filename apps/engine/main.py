@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field, ValidationError
 import ai
 import backtester
 import metrics
+import montecarlo
 import optimizer
 import store
 import strategies
@@ -90,31 +91,35 @@ def _load_df(source: str, symbol: str, interval: str, start: str, end: str) -> p
     return df
 
 
-@app.post("/backtest")
-def run_backtest(req: BacktestRequest):
-    if req.dsl is not None:
-        dsl_dict = req.dsl
-    else:
+def _resolve_dsl(strategy: str, params: dict, dsl_dict: dict | None) -> tuple[StrategyDSL, dict]:
+    """프리셋 ID 또는 커스텀 DSL → (검증된 DSL, 전략 표시 정보)."""
+    if dsl_dict is None:
         try:
-            dsl_dict = strategies.build_dsl(req.strategy, req.params)
+            dsl_dict = strategies.build_dsl(strategy, params)
         except KeyError:
-            raise HTTPException(400, f"알 수 없는 전략: {req.strategy}")
+            raise HTTPException(400, f"알 수 없는 전략: {strategy}")
+        preset = strategies.PRESETS[strategy]
+        info = {"id": preset.id, "name": preset.name, "params": params}
+    else:
+        info = None
     try:
         dsl = StrategyDSL.model_validate(dsl_dict)
     except ValidationError as e:
         raise HTTPException(400, f"전략 검증 실패: {e.errors()[0].get('msg', str(e))}")
+    if info is None:
+        info = {"id": "custom", "name": dsl.name, "params": {}}
+    return dsl, info
 
+
+@app.post("/backtest")
+def run_backtest(req: BacktestRequest):
+    dsl, strategy_info = _resolve_dsl(req.strategy, req.params, req.dsl)
     df = _load_df(req.source, req.symbol, req.interval, req.start, req.end)
 
     signal = compiler.build_position(dsl, df)
     result = backtester.run(df, signal, req.fee, req.slippage, req.initial_capital)
 
     ppy = metrics.periods_per_year(req.source, req.interval)
-    if req.dsl is not None:
-        strategy_info = {"id": "custom", "name": dsl.name, "params": {}}
-    else:
-        preset = strategies.PRESETS[req.strategy]
-        strategy_info = {"id": preset.id, "name": preset.name, "params": req.params}
 
     return {
         "symbol": req.symbol.strip(),
@@ -167,6 +172,70 @@ def run_optimize(req: OptimizeRequest):
                                   req.initial_capital, ppy, req.grid, req.sort_by)
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+class MonteCarloRequest(BacktestRequest):
+    n_sims: int = Field(1000, ge=100, le=5000)
+
+
+@app.post("/montecarlo")
+def run_montecarlo(req: MonteCarloRequest):
+    dsl, strategy_info = _resolve_dsl(req.strategy, req.params, req.dsl)
+    df = _load_df(req.source, req.symbol, req.interval, req.start, req.end)
+    signal = compiler.build_position(dsl, df)
+    result = backtester.run(df, signal, req.fee, req.slippage, req.initial_capital)
+    try:
+        return {"strategy": strategy_info,
+                **montecarlo.run(result["trades"], req.n_sims, req.initial_capital)}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+class MultiSymbolRequest(BaseModel):
+    source: Literal["stock", "crypto"]
+    symbols: list[str] = Field(min_length=2, max_length=8)
+    interval: Literal["1d", "1h", "4h", "1wk"] = "1d"
+    start: str
+    end: str
+    strategy: str = "custom"
+    params: dict[str, float] = {}
+    dsl: dict | None = None
+    fee: float = Field(0.001, ge=0, le=0.02)
+    slippage: float = Field(0.0005, ge=0, le=0.02)
+    initial_capital: float = Field(10_000_000, gt=0)
+
+
+@app.post("/multisymbol")
+def run_multisymbol(req: MultiSymbolRequest):
+    """같은 전략을 여러 종목에 적용 — 전략 범용성 검증. 개별 실패는 errors로 수집."""
+    dsl, strategy_info = _resolve_dsl(req.strategy, req.params, req.dsl)
+    ppy = metrics.periods_per_year(req.source, req.interval)
+
+    items, errors = [], []
+    for symbol in dict.fromkeys(s.strip() for s in req.symbols if s.strip()):
+        try:
+            df = _load_df(req.source, symbol, req.interval, req.start, req.end)
+        except HTTPException as e:
+            errors.append({"symbol": symbol, "detail": str(e.detail)})
+            continue
+        signal = compiler.build_position(dsl, df)
+        result = backtester.run(df, signal, req.fee, req.slippage, req.initial_capital)
+        split = metrics.compute_split(result, ppy)
+        equity = result["equity"]
+        items.append({
+            "symbol": symbol,
+            "metrics": metrics.compute(result, ppy),
+            "overfit_risk": split.get("overfit_risk") if split.get("available") else None,
+            "series": {
+                "time": [t.isoformat() for t in df.index],
+                "equity_norm": [round(float(v), 4) for v in (equity / equity.iloc[0]).to_numpy()],
+            },
+        })
+
+    if not items:
+        detail = "; ".join(f"{e['symbol']}: {e['detail']}" for e in errors)
+        raise HTTPException(400, f"모든 심볼에서 실패했습니다 — {detail}")
+    return {"strategy": strategy_info, "interval": req.interval, "items": items, "errors": errors}
 
 
 class WalkforwardRequest(OptimizeRequest):

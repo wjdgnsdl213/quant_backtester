@@ -75,6 +75,10 @@ export default function StrategyForm({
   advanced,
   onWalkforward,
   walkforwarding,
+  onMonteCarlo,
+  montecarloing,
+  onMultiSymbol,
+  multiSymboling,
 }: {
   strategies: StrategyMeta[];
   form: FormState;
@@ -88,6 +92,10 @@ export default function StrategyForm({
   advanced: boolean;
   onWalkforward: (opts: { grid: Record<string, number[]> | null; nFolds: number }) => void;
   walkforwarding: boolean;
+  onMonteCarlo: () => void;
+  montecarloing: boolean;
+  onMultiSymbol: (symbols: string[]) => void;
+  multiSymboling: boolean;
 }) {
   const selected = strategies.find((s) => s.id === form.strategy);
 
@@ -107,6 +115,14 @@ export default function StrategyForm({
   const [gridText, setGridText] = useState<Record<string, string>>({});
   const [sortBy, setSortBy] = useState<OptimizeOpts["sortBy"]>("is_sharpe");
   const [nFolds, setNFolds] = useState(4);
+
+  const [multiText, setMultiText] = useState("");
+
+  const parseSymbols = (): string[] =>
+    multiText
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
 
   const parseGrid = (): Record<string, number[]> | null => {
     if (!advanced || !selected) return null;
@@ -623,6 +639,40 @@ export default function StrategyForm({
       >
         {optimizing ? "파라미터 최적화 중…" : "파라미터 최적화 (그리드 서치)"}
       </button>
+
+      <button
+        type="button"
+        onClick={onMonteCarlo}
+        disabled={montecarloing || !form.symbol.trim()}
+        title="거래 순서를 수천 번 재배열해 수익률 신뢰구간을 봅니다"
+        className="rounded-md border border-black/20 px-4 py-2 text-sm font-medium text-neutral-700 transition-opacity hover:opacity-80 disabled:opacity-40 dark:border-white/20 dark:text-neutral-200"
+      >
+        {montecarloing ? "몬테카를로 시뮬레이션 중…" : "몬테카를로 (수익 신뢰구간)"}
+      </button>
+
+      <div className="rounded-md border border-black/10 dark:border-white/10 p-3">
+        <label className={labelCls} htmlFor="multi-symbols">
+          멀티 심볼 검증 (쉼표 구분, 2~8개)
+        </label>
+        <input
+          id="multi-symbols"
+          className={inputCls}
+          placeholder={QUICK_SYMBOLS[form.source].slice(0, 3).join(", ")}
+          spellCheck={false}
+          value={multiText}
+          onChange={(e) => setMultiText(e.target.value)}
+        />
+        <button
+          type="button"
+          onClick={() => onMultiSymbol(parseSymbols())}
+          disabled={multiSymboling || parseSymbols().length < 2 || parseSymbols().length > 8}
+          className="mt-1.5 w-full rounded-md border border-black/20 px-2 py-1.5 text-xs font-medium text-neutral-700 transition-opacity hover:opacity-80 disabled:opacity-40 dark:border-white/20 dark:text-neutral-200"
+        >
+          {multiSymboling
+            ? "여러 종목 백테스트 중… (첫 실행은 다운로드로 느릴 수 있음)"
+            : `현재 전략을 ${parseSymbols().length || "여러"}개 종목에서 검증`}
+        </button>
+      </div>
 
       {dslEditorOpen && (
         <DslEditor

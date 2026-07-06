@@ -103,11 +103,20 @@ export type OptimizeRow = {
   overfit_risk: "low" | "medium" | "high";
 };
 
+export type OptimizeAllRow = {
+  params: Record<string, number>;
+  is_sharpe: number | null;
+  oos_sharpe: number | null;
+  total_return_pct: number;
+  mdd_pct: number;
+};
+
 export type OptimizeResult = {
   strategy: StrategyMeta;
   evaluated: number;
   note: string;
   results: OptimizeRow[];
+  all_results: OptimizeAllRow[];
 };
 
 export type CompareItem = {
@@ -225,6 +234,68 @@ export type WalkforwardRequest = OptimizeRequest & { n_folds?: number };
 
 export async function runWalkforward(req: WalkforwardRequest): Promise<WalkforwardResult> {
   return postJson("/walkforward", req, "워크포워드 분석 실패");
+}
+
+export type MonteCarloResult = {
+  strategy: { id: string; name: string; params: Record<string, number> };
+  n_sims: number;
+  n_trades: number;
+  envelope: {
+    step: number[];
+    p5: number[];
+    p25: number[];
+    p50: number[];
+    p75: number[];
+    p95: number[];
+  };
+  stats: {
+    final_p5: number;
+    final_p25: number;
+    final_p50: number;
+    final_p75: number;
+    final_p95: number;
+    prob_loss: number;
+    mdd_p95: number;
+  };
+  note: string;
+};
+
+export type MonteCarloRequest = BacktestRequest & { n_sims?: number };
+
+export async function runMonteCarlo(req: MonteCarloRequest): Promise<MonteCarloResult> {
+  return postJson("/montecarlo", req, "몬테카를로 시뮬레이션 실패");
+}
+
+export type MultiSymbolItem = {
+  symbol: string;
+  metrics: Metrics;
+  overfit_risk: "low" | "medium" | "high" | null;
+  series: { time: string[]; equity_norm: number[] };
+};
+
+export type MultiSymbolResult = {
+  strategy: { id: string; name: string; params: Record<string, number> };
+  interval: string;
+  items: MultiSymbolItem[];
+  errors: { symbol: string; detail: string }[];
+};
+
+export type MultiSymbolRequest = {
+  source: "stock" | "crypto";
+  symbols: string[];
+  interval: string;
+  start: string;
+  end: string;
+  strategy: string;
+  params: Record<string, number>;
+  dsl?: StrategyDSL | null;
+  fee: number;
+  slippage: number;
+  initial_capital: number;
+};
+
+export async function runMultiSymbol(req: MultiSymbolRequest): Promise<MultiSymbolResult> {
+  return postJson("/multisymbol", req, "멀티 심볼 검증 실패");
 }
 
 export type CompareRequest = {
