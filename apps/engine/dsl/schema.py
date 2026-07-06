@@ -88,6 +88,7 @@ class Risk(BaseModel):
 class StrategyDSL(BaseModel):
     version: Literal[1] = 1
     name: str = "이름 없는 전략"
+    direction: Literal["long", "short"] = "long"
     entry: Condition
     exit: Condition
     risk: Risk = Risk()

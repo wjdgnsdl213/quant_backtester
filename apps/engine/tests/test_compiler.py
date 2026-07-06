@@ -7,9 +7,10 @@ from dsl.schema import StrategyDSL
 from tests.conftest import make_df
 
 
-def _dsl(entry, exit_, risk=None):
+def _dsl(entry, exit_, risk=None, direction="long"):
     return StrategyDSL.model_validate(
-        {"version": 1, "name": "테스트", "entry": entry, "exit": exit_, "risk": risk or {}}
+        {"version": 1, "name": "테스트", "direction": direction,
+         "entry": entry, "exit": exit_, "risk": risk or {}}
     )
 
 
@@ -76,6 +77,39 @@ class TestStateMachine:
         dsl = _dsl({"op": "cross_below", "left": CLOSE, "right": {"const": 95}}, NEVER)
         pos = compiler.build_position(dsl, df)
         assert (pos.iloc[2:] == 1.0).all()  # 청산 조건 없음 + 손절 없음 → 계속 보유
+
+
+class TestShortStateMachine:
+    """direction="short" — 손절/익절 방향이 반전되고 포지션 값이 -1이 된다."""
+
+    def test_entry_sets_negative_position(self):
+        closes = [100, 100, 90, 90, 90, 90]
+        df = make_df(closes)
+        dsl = _dsl({"op": "cross_below", "left": CLOSE, "right": {"const": 95}}, NEVER,
+                    direction="short")
+        pos = compiler.build_position(dsl, df)
+        assert pos.iloc[2] == -1.0
+        assert pos.iloc[5] == -1.0  # 청산 조건 없음 → 계속 보유
+
+    def test_short_stop_loss_on_price_rise(self):
+        # 진입가 = 3번 봉 시가(=2번 종가 90); 5번 봉 종가 95 >= 90*1.05 → 손절(가격 상승)
+        closes = [100, 100, 90, 90, 90, 95, 90, 90]
+        df = make_df(closes)
+        dsl = _dsl({"op": "cross_below", "left": CLOSE, "right": {"const": 95}}, NEVER,
+                    {"stop_loss_pct": 5}, direction="short")
+        pos = compiler.build_position(dsl, df)
+        assert pos.iloc[4] == -1.0
+        assert pos.iloc[5] == 0.0
+
+    def test_short_take_profit_on_price_fall(self):
+        # 진입가=90; take_profit=10% → 임계값 81; 4번 봉 종가 80 <= 81 → 익절(가격 하락)
+        closes = [100, 100, 90, 90, 80, 80]
+        df = make_df(closes)
+        dsl = _dsl({"op": "cross_below", "left": CLOSE, "right": {"const": 95}}, NEVER,
+                    {"take_profit_pct": 10}, direction="short")
+        pos = compiler.build_position(dsl, df)
+        assert pos.iloc[3] == -1.0
+        assert pos.iloc[4] == 0.0
 
 
 class TestLogic:

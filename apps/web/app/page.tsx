@@ -19,20 +19,20 @@ import {
   type WalkforwardResult,
 } from "@/lib/api";
 import { downloadJson, downloadText, tradesToCsv } from "@/lib/export";
+import CandleChart from "@/components/CandleChart";
 import CompareView from "@/components/CompareView";
+import DrawdownChart from "@/components/DrawdownChart";
+import EquityChart from "@/components/EquityChart";
+import MetricsCards from "@/components/MetricsCards";
 import MonteCarloView from "@/components/MonteCarloView";
 import MultiSymbolView from "@/components/MultiSymbolView";
 import OptimizeHeatmap from "@/components/OptimizeHeatmap";
 import OptimizeTable from "@/components/OptimizeTable";
-import WalkforwardView from "@/components/WalkforwardView";
-import { type OptimizeOpts } from "@/components/StrategyForm";
-import CandleChart from "@/components/CandleChart";
-import DrawdownChart from "@/components/DrawdownChart";
-import EquityChart from "@/components/EquityChart";
-import MetricsCards from "@/components/MetricsCards";
 import OverfitCard from "@/components/OverfitCard";
-import StrategyForm, { type FormState } from "@/components/StrategyForm";
+import ResultTabs, { type ResultTabId } from "@/components/ResultTabs";
+import StrategyForm, { type FormState, type OptimizeOpts } from "@/components/StrategyForm";
 import TradesTable from "@/components/TradesTable";
+import WalkforwardView from "@/components/WalkforwardView";
 
 const DEFAULT_FORM: FormState = {
   source: "stock",
@@ -68,13 +68,21 @@ function Card({
               onClick={onClose}
               className="text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
             >
-              닫기 ✕
+              지우기 ✕
             </button>
           )}
         </div>
       )}
       {children}
     </section>
+  );
+}
+
+function EmptyTab({ message }: { message: string }) {
+  return (
+    <Card>
+      <p className="py-16 text-center text-sm text-neutral-500">{message}</p>
+    </Card>
   );
 }
 
@@ -96,6 +104,8 @@ export default function Home() {
   const [montecarloing, setMontecarloing] = useState(false);
   const [msResult, setMsResult] = useState<MultiSymbolResult | null>(null);
   const [multiSymboling, setMultiSymboling] = useState(false);
+
+  const [activeTab, setActiveTab] = useState<ResultTabId>("backtest");
 
   const [advanced, setAdvanced] = useState(false);
   useEffect(() => {
@@ -133,6 +143,7 @@ export default function Home() {
           ai ? { ...rest, strategy: "custom", dsl: ai.dsl } : rest,
         ),
       );
+      setActiveTab("backtest");
     } catch (e) {
       setError(e instanceof Error ? e.message : "백테스트에 실패했습니다");
     } finally {
@@ -161,6 +172,7 @@ export default function Home() {
           sort_by: opts.sortBy,
         }),
       );
+      setActiveTab("optimize");
     } catch (e) {
       setError(e instanceof Error ? e.message : "최적화에 실패했습니다");
     } finally {
@@ -190,6 +202,7 @@ export default function Home() {
           n_folds: opts.nFolds,
         }),
       );
+      setActiveTab("walkforward");
     } catch (e) {
       setError(e instanceof Error ? e.message : "워크포워드 분석에 실패했습니다");
     } finally {
@@ -213,6 +226,7 @@ export default function Home() {
           ai ? { ...rest, strategy: "custom", dsl: ai.dsl } : rest,
         ),
       );
+      setActiveTab("montecarlo");
     } catch (e) {
       setError(e instanceof Error ? e.message : "몬테카를로 시뮬레이션에 실패했습니다");
     } finally {
@@ -240,6 +254,7 @@ export default function Home() {
           initial_capital: form.initial_capital,
         }),
       );
+      setActiveTab("multisymbol");
     } catch (e) {
       setError(e instanceof Error ? e.message : "멀티 심볼 검증에 실패했습니다");
     } finally {
@@ -264,6 +279,7 @@ export default function Home() {
           initial_capital: form.initial_capital,
         }),
       );
+      setActiveTab("compare");
     } catch (e) {
       setError(e instanceof Error ? e.message : "전략 비교에 실패했습니다");
     } finally {
@@ -342,126 +358,158 @@ export default function Home() {
             </div>
           )}
 
-          {cmpResult && (
-            <Card
-              title={`전략 비교 — ${cmpResult.symbol} (${cmpResult.interval})`}
-              onClose={() => setCmpResult(null)}
-            >
-              <CompareView result={cmpResult} />
-            </Card>
-          )}
+          <ResultTabs
+            active={activeTab}
+            onSelect={setActiveTab}
+            hasData={{
+              backtest: !!result,
+              optimize: !!optResult,
+              walkforward: !!wfResult,
+              montecarlo: !!mcResult,
+              multisymbol: !!msResult,
+              compare: !!cmpResult,
+            }}
+          />
 
-          {msResult && (
-            <Card
-              title={`멀티 심볼 검증 — ${msResult.strategy.name}`}
-              onClose={() => setMsResult(null)}
-            >
-              <MultiSymbolView result={msResult} />
-            </Card>
-          )}
-
-          {mcResult && (
-            <Card
-              title={`몬테카를로 — ${mcResult.strategy.name} (${mcResult.n_sims.toLocaleString()}회 시뮬레이션)`}
-              onClose={() => setMcResult(null)}
-            >
-              <MonteCarloView result={mcResult} />
-            </Card>
-          )}
-
-          {wfResult && (
-            <Card
-              title={`워크포워드 분석 — ${wfResult.strategy.name}`}
-              onClose={() => setWfResult(null)}
-            >
-              <WalkforwardView
-                result={wfResult}
-                paramLabels={Object.fromEntries(
-                  wfResult.strategy.params.map((p) => [p.key, p.label]),
+          {activeTab === "backtest" &&
+            (result ? (
+              <>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setResult(null)}
+                    className="text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
+                  >
+                    결과 지우기 ✕
+                  </button>
+                </div>
+                <MetricsCards metrics={result.metrics} />
+                {advanced && (
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="text-neutral-500">내보내기:</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        downloadText(
+                          `trades_${result.symbol.replace("/", "-")}.csv`,
+                          tradesToCsv(result.trades),
+                          "text/csv",
+                        )
+                      }
+                      className="rounded border border-black/20 px-2 py-1 font-medium text-neutral-700 hover:opacity-80 dark:border-white/20 dark:text-neutral-200"
+                    >
+                      거래 내역 CSV
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        downloadJson(`backtest_${result.symbol.replace("/", "-")}.json`, result)
+                      }
+                      className="rounded border border-black/20 px-2 py-1 font-medium text-neutral-700 hover:opacity-80 dark:border-white/20 dark:text-neutral-200"
+                    >
+                      결과 전체 JSON
+                    </button>
+                  </div>
                 )}
-              />
-            </Card>
-          )}
+                <Card title="과적합 진단 (In-Sample / Out-of-Sample)">
+                  <OverfitCard split={result.split} />
+                </Card>
+                <Card title={`자산 곡선 — ${result.symbol} (${result.interval})`}>
+                  <EquityChart result={result} />
+                </Card>
+                <Card title="낙폭 (Drawdown)">
+                  <DrawdownChart result={result} />
+                </Card>
+                <Card title="가격 차트 · 매매 시점">
+                  <CandleChart result={result} />
+                </Card>
+                <Card title={`거래 내역 (${result.trades.length}건)`}>
+                  <TradesTable trades={result.trades} />
+                </Card>
+              </>
+            ) : (
+              <EmptyTab message="왼쪽에서 종목과 전략을 선택하고 '백테스트 실행'을 눌러주세요." />
+            ))}
 
-          {optResult && (
-            <Card
-              title={`파라미터 최적화 — ${optResult.strategy.name}`}
-              onClose={() => setOptResult(null)}
-            >
-              <OptimizeTable
-                result={optResult}
-                paramLabels={Object.fromEntries(
-                  optResult.strategy.params.map((p) => [p.key, p.label]),
-                )}
-                onApply={onApplyParams}
-                applying={loading}
-              />
-              {optResult.all_results && (
-                <OptimizeHeatmap
-                  all={optResult.all_results}
+          {activeTab === "optimize" &&
+            (optResult ? (
+              <Card
+                title={`파라미터 최적화 — ${optResult.strategy.name}`}
+                onClose={() => setOptResult(null)}
+              >
+                <OptimizeTable
+                  result={optResult}
                   paramLabels={Object.fromEntries(
                     optResult.strategy.params.map((p) => [p.key, p.label]),
                   )}
+                  onApply={onApplyParams}
+                  applying={loading}
                 />
-              )}
-            </Card>
-          )}
+                {optResult.all_results && (
+                  <OptimizeHeatmap
+                    all={optResult.all_results}
+                    paramLabels={Object.fromEntries(
+                      optResult.strategy.params.map((p) => [p.key, p.label]),
+                    )}
+                  />
+                )}
+              </Card>
+            ) : (
+              <EmptyTab message="왼쪽 '검증 도구'에서 파라미터 최적화를 실행하면 여기에 결과가 표시됩니다." />
+            ))}
 
-          {!result && !error && !optResult && !cmpResult && !wfResult && !mcResult && !msResult && (
-            <Card>
-              <p className="py-16 text-center text-sm text-neutral-500">
-                왼쪽에서 종목과 전략을 선택하고 백테스트를 실행하세요.
-              </p>
-            </Card>
-          )}
+          {activeTab === "walkforward" &&
+            (wfResult ? (
+              <Card
+                title={`워크포워드 분석 — ${wfResult.strategy.name}`}
+                onClose={() => setWfResult(null)}
+              >
+                <WalkforwardView
+                  result={wfResult}
+                  paramLabels={Object.fromEntries(
+                    wfResult.strategy.params.map((p) => [p.key, p.label]),
+                  )}
+                />
+              </Card>
+            ) : (
+              <EmptyTab message="고급 모드의 '검증 도구'에서 워크포워드 분석을 실행하면 여기에 결과가 표시됩니다." />
+            ))}
 
-          {result && (
-            <>
-              <MetricsCards metrics={result.metrics} />
-              {advanced && (
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <span className="text-neutral-500">내보내기:</span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      downloadText(
-                        `trades_${result.symbol.replace("/", "-")}.csv`,
-                        tradesToCsv(result.trades),
-                        "text/csv",
-                      )
-                    }
-                    className="rounded border border-black/20 px-2 py-1 font-medium text-neutral-700 hover:opacity-80 dark:border-white/20 dark:text-neutral-200"
-                  >
-                    거래 내역 CSV
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      downloadJson(`backtest_${result.symbol.replace("/", "-")}.json`, result)
-                    }
-                    className="rounded border border-black/20 px-2 py-1 font-medium text-neutral-700 hover:opacity-80 dark:border-white/20 dark:text-neutral-200"
-                  >
-                    결과 전체 JSON
-                  </button>
-                </div>
-              )}
-              <Card title="과적합 진단 (In-Sample / Out-of-Sample)">
-                <OverfitCard split={result.split} />
+          {activeTab === "montecarlo" &&
+            (mcResult ? (
+              <Card
+                title={`몬테카를로 — ${mcResult.strategy.name} (${mcResult.n_sims.toLocaleString()}회 시뮬레이션)`}
+                onClose={() => setMcResult(null)}
+              >
+                <MonteCarloView result={mcResult} />
               </Card>
-              <Card title={`자산 곡선 — ${result.symbol} (${result.interval})`}>
-                <EquityChart result={result} />
+            ) : (
+              <EmptyTab message="왼쪽 '검증 도구'에서 몬테카를로 시뮬레이션을 실행하면 여기에 결과가 표시됩니다." />
+            ))}
+
+          {activeTab === "multisymbol" &&
+            (msResult ? (
+              <Card
+                title={`멀티 심볼 검증 — ${msResult.strategy.name}`}
+                onClose={() => setMsResult(null)}
+              >
+                <MultiSymbolView result={msResult} />
               </Card>
-              <Card title="낙폭 (Drawdown)">
-                <DrawdownChart result={result} />
+            ) : (
+              <EmptyTab message="왼쪽 '검증 도구'에서 여러 종목을 입력하고 검증을 실행하면 여기에 결과가 표시됩니다." />
+            ))}
+
+          {activeTab === "compare" &&
+            (cmpResult ? (
+              <Card
+                title={`전략 비교 — ${cmpResult.symbol} (${cmpResult.interval})`}
+                onClose={() => setCmpResult(null)}
+              >
+                <CompareView result={cmpResult} />
               </Card>
-              <Card title="가격 차트 · 매매 시점">
-                <CandleChart result={result} />
-              </Card>
-              <Card title={`거래 내역 (${result.trades.length}건)`}>
-                <TradesTable trades={result.trades} />
-              </Card>
-            </>
-          )}
+            ) : (
+              <EmptyTab message="왼쪽 '저장된 전략'에서 2개 이상 선택 후 비교를 실행하면 여기에 결과가 표시됩니다." />
+            ))}
         </div>
       </main>
     </div>

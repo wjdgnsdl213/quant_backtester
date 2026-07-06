@@ -7,6 +7,7 @@ import { validateDsl, type GeneratedStrategy, type StrategyDSL } from "@/lib/api
 const TEMPLATE = `{
   "version": 1,
   "name": "나의 전략",
+  "direction": "long",
   "entry": {
     "op": "lt",
     "left": { "ind": "rsi", "params": { "period": 14 } },
@@ -79,6 +80,7 @@ export default function DslEditor({
         <p className="mb-2 text-xs leading-relaxed text-neutral-500">
           전략 DSL을 직접 작성하거나 붙여넣으세요. 조건 op: gt / lt / cross_above /
           cross_below / and / or / not · 피연산자: {"{ind, params}"} 또는 {"{const}"} ·
+          direction: "long"(기본) 또는 "short" — 숏은 손절/익절 판정 방향이 반전됩니다 ·
           지표 목록은 블록 빌더에서 확인할 수 있습니다.
         </p>
 

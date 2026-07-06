@@ -37,8 +37,9 @@ def _system_prompt() -> str:
 {{
   "version": 1,
   "name": "전략 이름 (한국어, 60자 이내)",
-  "entry": <조건>,   // 매수(진입) 조건
-  "exit": <조건>,    // 매도(청산) 조건
+  "direction": "long" | "short",  // long=상승에 베팅(매수 진입), short=하락에 베팅(공매도 진입). 기본값 long
+  "entry": <조건>,   // 진입 조건
+  "exit": <조건>,    // 청산 조건
   "risk": {{"stop_loss_pct": 숫자 | null, "take_profit_pct": 숫자 | null}}
 }}
 
@@ -57,13 +58,17 @@ def _system_prompt() -> str:
 ## 규칙
 - 지표 ID와 파라미터는 위 목록에 있는 것만 사용. 목록에 없는 지표가 필요하면 가장 가까운 대체 지표로 구성
 - cross_above/cross_below의 양쪽이 모두 상수일 수 없음
-- 롱 전용 엔진: 진입=매수, 청산=매도. 공매도는 표현 불가 — 사용자가 숏을 요청하면 조건을 롱 관점으로 뒤집지 말고 name에 "(롱 전환)"을 붙이고 가장 유사한 롱 전략으로 구성
+- direction 기본값은 "long". 사용자가 하락 베팅·공매도·숏을 요청하면 "short"로 설정하고, 조건은 뒤집지 말고 하락 신호를 그대로 진입 조건으로 사용
+  (direction="short"일 때 stop_loss_pct는 가격이 오를 때, take_profit_pct는 가격이 내릴 때 발동됨을 감안해 자연스러운 조건을 구성)
 - 모든 조건은 봉 종가 시점에 평가됨. 손절/익절이 명시되면 risk에 넣고, 없으면 null
 - 사용자가 기간·수치를 말하지 않으면 지표의 default 값을 사용
 
 ## 예시
 입력: "RSI가 30 밑으로 떨어지면 사고 70 넘으면 팔아줘. 손절은 5%"
-출력: {{"version": 1, "name": "RSI 과매도 반등", "entry": {{"op": "lt", "left": {{"ind": "rsi", "params": {{"period": 14}}}}, "right": {{"const": 30}}}}, "exit": {{"op": "gt", "left": {{"ind": "rsi", "params": {{"period": 14}}}}, "right": {{"const": 70}}}}, "risk": {{"stop_loss_pct": 5, "take_profit_pct": null}}}}"""
+출력: {{"version": 1, "name": "RSI 과매도 반등", "direction": "long", "entry": {{"op": "lt", "left": {{"ind": "rsi", "params": {{"period": 14}}}}, "right": {{"const": 30}}}}, "exit": {{"op": "gt", "left": {{"ind": "rsi", "params": {{"period": 14}}}}, "right": {{"const": 70}}}}, "risk": {{"stop_loss_pct": 5, "take_profit_pct": null}}}}
+
+입력: "20일 최저가를 하향 돌파하면 숏 진입하고, 20일 최고가를 상향 돌파하면 청산해줘"
+출력: {{"version": 1, "name": "채널 하향 돌파 숏", "direction": "short", "entry": {{"op": "cross_below", "left": {{"ind": "close", "params": {{}}}}, "right": {{"ind": "lowest", "params": {{"period": 20}}}}}}, "exit": {{"op": "cross_above", "left": {{"ind": "close", "params": {{}}}}, "right": {{"ind": "highest", "params": {{"period": 20}}}}}}, "risk": {{"stop_loss_pct": null, "take_profit_pct": null}}}}"""
 
 
 def _extract_json(text: str) -> dict:

@@ -21,6 +21,7 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
         <thead className="sticky top-0 bg-[#f9f9f7] text-xs text-neutral-500 dark:bg-[#0d0d0d]">
           <tr>
             <th className="px-3 py-2 text-left font-medium">#</th>
+            <th className="px-3 py-2 text-left font-medium">방향</th>
             <th className="px-3 py-2 text-left font-medium">진입</th>
             <th className="px-3 py-2 text-left font-medium">청산</th>
             <th className="px-3 py-2 text-right font-medium">진입가</th>
@@ -36,6 +37,11 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
               className="border-t border-black/5 dark:border-white/5"
             >
               <td className="px-3 py-1.5 text-neutral-500">{i + 1}</td>
+              <td className="px-3 py-1.5">
+                <span className="rounded bg-black/5 px-1.5 py-0.5 text-xs dark:bg-white/10">
+                  {t.direction === "short" ? "숏" : "롱"}
+                </span>
+              </td>
               <td className="px-3 py-1.5">{t.entry_time.slice(0, 10)}</td>
               <td className="px-3 py-1.5">
                 {t.exit_time ? t.exit_time.slice(0, 10) : <span className="text-neutral-500">보유 중</span>}

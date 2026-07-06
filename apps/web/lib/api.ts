@@ -40,6 +40,7 @@ export type Trade = {
   exit_price: number;
   return_pct: number;
   holding_bars: number;
+  direction: "long" | "short";
 };
 
 export type BacktestResult = {

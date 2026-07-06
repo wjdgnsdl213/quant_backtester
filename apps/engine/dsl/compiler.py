@@ -18,7 +18,7 @@ from dsl.schema import Compare, Condition, ConstRef, IndicatorRef, Logic, Not, R
 def build_position(dsl: StrategyDSL, df: pd.DataFrame) -> pd.Series:
     entry = eval_condition(dsl.entry, df)
     exit_ = eval_condition(dsl.exit, df)
-    return _state_machine(df, entry, exit_, dsl.risk)
+    return _state_machine(df, entry, exit_, dsl.risk, dsl.direction)
 
 
 def eval_condition(cond: Condition, df: pd.DataFrame) -> pd.Series:
@@ -51,7 +51,10 @@ def _operand(ref, df: pd.DataFrame) -> pd.Series:
     return indicators.compute(ref.ind, df, ref.params)
 
 
-def _state_machine(df: pd.DataFrame, entry: pd.Series, exit_: pd.Series, risk: Risk) -> pd.Series:
+def _state_machine(df: pd.DataFrame, entry: pd.Series, exit_: pd.Series, risk: Risk,
+                    direction: str = "long") -> pd.Series:
+    """direction="short"이면 포지션 값은 -1이 되고, 손절/익절 판정 방향이 반전된다
+    (숏은 가격 상승 시 손실 → 상승 시 손절, 가격 하락 시 이익 → 하락 시 익절)."""
     n = len(df)
     open_ = df["open"].to_numpy(dtype=float)
     close = df["close"].to_numpy(dtype=float)
@@ -59,6 +62,7 @@ def _state_machine(df: pd.DataFrame, entry: pd.Series, exit_: pd.Series, risk: R
     ext = exit_.to_numpy(dtype=bool)
     sl = risk.stop_loss_pct
     tp = risk.take_profit_pct
+    sign = 1.0 if direction == "long" else -1.0
 
     pos = np.zeros(n)
     in_pos = False
@@ -71,10 +75,16 @@ def _state_machine(df: pd.DataFrame, entry: pd.Series, exit_: pd.Series, risk: R
         if in_pos:
             exit_now = ext[i]
             if not exit_now and not np.isnan(entry_price):
-                if sl is not None and close[i] <= entry_price * (1 - sl / 100):
-                    exit_now = True
-                if tp is not None and close[i] >= entry_price * (1 + tp / 100):
-                    exit_now = True
+                if direction == "long":
+                    if sl is not None and close[i] <= entry_price * (1 - sl / 100):
+                        exit_now = True
+                    if tp is not None and close[i] >= entry_price * (1 + tp / 100):
+                        exit_now = True
+                else:
+                    if sl is not None and close[i] >= entry_price * (1 + sl / 100):
+                        exit_now = True
+                    if tp is not None and close[i] <= entry_price * (1 - tp / 100):
+                        exit_now = True
             if exit_now:
                 in_pos = False
                 entry_price = np.nan
@@ -83,6 +93,6 @@ def _state_machine(df: pd.DataFrame, entry: pd.Series, exit_: pd.Series, risk: R
                 in_pos = True
                 entry_price = np.nan  # 체결가는 다음 봉 시가에서 확정
 
-        pos[i] = 1.0 if in_pos else 0.0
+        pos[i] = sign if in_pos else 0.0
 
     return pd.Series(pos, index=df.index)

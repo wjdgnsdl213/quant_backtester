@@ -98,12 +98,14 @@ export default function BlockBuilder({
       const exit = importGroup(dsl.exit);
       if (entry && exit) {
         const risk = (dsl.risk as Record<string, number | null>) ?? {};
+        const direction = dsl.direction === "short" ? "short" : "long";
         return {
           name: initial.name,
           entry,
           exit,
           stopLoss: risk.stop_loss_pct ?? 0,
           takeProfit: risk.take_profit_pct ?? 0,
+          direction: direction as "long" | "short",
           imported: true,
         };
       }
@@ -117,6 +119,7 @@ export default function BlockBuilder({
       },
       stopLoss: 0,
       takeProfit: 0,
+      direction: "long" as const,
       imported: false,
     };
   })();
@@ -126,6 +129,7 @@ export default function BlockBuilder({
   const [exit, setExit] = useState<Group>(init.exit);
   const [stopLoss, setStopLoss] = useState<number>(init.stopLoss || 0);
   const [takeProfit, setTakeProfit] = useState<number>(init.takeProfit || 0);
+  const [direction, setDirection] = useState<"long" | "short">(init.direction);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -135,6 +139,7 @@ export default function BlockBuilder({
     const dsl: StrategyDSL = {
       version: 1,
       name: name.trim() || "블록 전략",
+      direction,
       entry: groupToCondition(entry),
       exit: groupToCondition(exit),
       risk: {
@@ -345,8 +350,37 @@ export default function BlockBuilder({
             />
           </div>
 
-          <GroupEditor title="진입 (매수) 조건" group={entry} setGroup={setEntry} />
-          <GroupEditor title="청산 (매도) 조건" group={exit} setGroup={setExit} />
+          <div>
+            <span className={labelCls}>포지션 방향</span>
+            <div className="grid grid-cols-2 gap-1 rounded-md border border-black/10 p-1 dark:border-white/10">
+              {(["long", "short"] as const).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setDirection(d)}
+                  className={`rounded px-2 py-1.5 text-sm font-medium transition-colors ${
+                    direction === d
+                      ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
+                      : "text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
+                  }`}
+                >
+                  {d === "long" ? "롱 (상승 베팅)" : "숏 (하락 베팅)"}
+                </button>
+              ))}
+            </div>
+            {direction === "short" && (
+              <p className="mt-1 text-[11px] leading-relaxed text-neutral-500">
+                숏은 진입 조건 성립 시 공매도로 진입합니다. 손절은 가격 상승 시, 익절은 가격 하락 시 발동됩니다.
+              </p>
+            )}
+          </div>
+
+          <GroupEditor
+            title={direction === "short" ? "진입 (공매도) 조건" : "진입 (매수) 조건"}
+            group={entry}
+            setGroup={setEntry}
+          />
+          <GroupEditor title="청산 조건" group={exit} setGroup={setExit} />
 
           <div className="grid grid-cols-2 gap-2">
             <div>

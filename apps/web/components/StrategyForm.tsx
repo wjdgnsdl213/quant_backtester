@@ -62,6 +62,12 @@ const INTERVALS: Record<FormState["source"], { v: string; label: string }[]> = {
   ],
 };
 
+const inputCls =
+  "w-full rounded-md border border-black/10 dark:border-white/10 bg-transparent px-2.5 py-1.5 text-sm outline-none focus:border-[#2a78d6] dark:focus:border-[#3987e5]";
+const labelCls = "block text-xs font-medium text-neutral-500 mb-1";
+const sectionCls = "rounded-md border border-black/10 dark:border-white/10 p-3";
+const sectionTitleCls = "cursor-pointer text-xs font-semibold text-neutral-700 dark:text-neutral-200";
+
 export default function StrategyForm({
   strategies,
   form,
@@ -204,18 +210,17 @@ export default function StrategyForm({
     onChange({ ...form, strategy: id, params });
   };
 
-  const inputCls =
-    "w-full rounded-md border border-black/10 dark:border-white/10 bg-transparent px-2.5 py-1.5 text-sm outline-none focus:border-[#2a78d6] dark:focus:border-[#3987e5]";
-  const labelCls = "block text-xs font-medium text-neutral-500 mb-1";
+  const aiDirection = (form.ai?.dsl as Record<string, unknown> | undefined)?.direction;
 
   return (
     <form
-      className="flex flex-col gap-4"
+      className="flex flex-col gap-3"
       onSubmit={(e) => {
         e.preventDefault();
         onRun();
       }}
     >
+      {/* 기본 설정 — 항상 펼쳐짐 */}
       <div>
         <span className={labelCls}>시장</span>
         <div className="grid grid-cols-2 gap-1 rounded-md border border-black/10 dark:border-white/10 p-1">
@@ -346,100 +351,111 @@ export default function StrategyForm({
         </div>
       )}
 
-      <div className="rounded-md border border-black/10 dark:border-white/10 p-3">
-        <span className={labelCls}>AI 전략 생성</span>
-        <textarea
-          className={`${inputCls} min-h-16 resize-y`}
-          placeholder="예: 20일선이 60일선을 넘으면 사고, RSI가 75를 넘으면 팔아줘. 손절 7%"
-          value={aiPrompt}
-          onChange={(e) => setAiPrompt(e.target.value)}
-          disabled={aiLoading}
-        />
-        <div className={`mt-1.5 grid gap-1.5 ${advanced ? "grid-cols-3" : "grid-cols-2"}`}>
-          <button
-            type="button"
-            onClick={onGenerate}
-            disabled={aiLoading || aiPrompt.trim().length < 2}
-            className="rounded-md border border-[#2a78d6] px-2 py-1.5 text-sm font-medium text-[#2a78d6] transition-opacity hover:opacity-80 disabled:opacity-40 dark:border-[#3987e5] dark:text-[#3987e5]"
-          >
-            {aiLoading ? "생성 중…" : "AI로 만들기"}
-          </button>
-          <button
-            type="button"
-            onClick={() => setBuilderOpen(true)}
-            disabled={indicators.length === 0}
-            className="rounded-md border border-black/20 px-2 py-1.5 text-sm font-medium text-neutral-700 transition-opacity hover:opacity-80 disabled:opacity-40 dark:border-white/20 dark:text-neutral-200"
-          >
-            블록 조립
-          </button>
-          {advanced && (
+      {/* 전략 생성 도구 */}
+      <details className={sectionCls} open>
+        <summary className={sectionTitleCls}>전략 생성 도구 (AI · 블록 · JSON)</summary>
+        <div className="mt-2">
+          <textarea
+            className={`${inputCls} min-h-16 resize-y`}
+            placeholder="예: 20일선이 60일선을 넘으면 사고, RSI가 75를 넘으면 팔아줘. 손절 7%"
+            value={aiPrompt}
+            onChange={(e) => setAiPrompt(e.target.value)}
+            disabled={aiLoading}
+          />
+          <div className={`mt-1.5 grid gap-1.5 ${advanced ? "grid-cols-3" : "grid-cols-2"}`}>
             <button
               type="button"
-              onClick={() => setDslEditorOpen(true)}
-              className="rounded-md border border-black/20 px-2 py-1.5 text-sm font-medium text-neutral-700 transition-opacity hover:opacity-80 dark:border-white/20 dark:text-neutral-200"
+              onClick={onGenerate}
+              disabled={aiLoading || aiPrompt.trim().length < 2}
+              className="rounded-md border border-[#2a78d6] px-2 py-1.5 text-sm font-medium text-[#2a78d6] transition-opacity hover:opacity-80 disabled:opacity-40 dark:border-[#3987e5] dark:text-[#3987e5]"
             >
-              JSON 편집
+              {aiLoading ? "생성 중…" : "AI로 만들기"}
             </button>
-          )}
-        </div>
-        {aiError && (
-          <p className="mt-1.5 text-xs leading-relaxed text-[#d03b3b]">{aiError}</p>
-        )}
-        {form.ai && (
-          <div className="mt-2 rounded-md bg-[#2a78d6]/8 p-2.5 dark:bg-[#3987e5]/10">
-            <div className="flex items-start justify-between gap-2">
-              <p className="text-xs font-semibold">{form.ai.name}</p>
-              <div className="flex shrink-0 gap-2">
-                <button
-                  type="button"
-                  onClick={onSave}
-                  disabled={saveBusy}
-                  className="text-xs text-[#2a78d6] hover:opacity-80 disabled:opacity-40 dark:text-[#3987e5]"
-                >
-                  {saveBusy ? "저장 중…" : "저장"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onChange({ ...form, ai: null })}
-                  className="text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
-                >
-                  해제 ✕
-                </button>
-              </div>
-            </div>
-            <p className="mt-1 text-xs leading-relaxed text-neutral-500">
-              {form.ai.summary}
-            </p>
-            <p className="mt-1.5 text-[11px] text-[#2a78d6] dark:text-[#3987e5]">
-              백테스트 실행 시 위 프리셋 대신 이 전략이 사용됩니다
-            </p>
+            <button
+              type="button"
+              onClick={() => setBuilderOpen(true)}
+              disabled={indicators.length === 0}
+              className="rounded-md border border-black/20 px-2 py-1.5 text-sm font-medium text-neutral-700 transition-opacity hover:opacity-80 disabled:opacity-40 dark:border-white/20 dark:text-neutral-200"
+            >
+              블록 조립
+            </button>
             {advanced && (
-              <details className="mt-1.5">
-                <summary className="cursor-pointer text-[11px] text-neutral-500">
-                  DSL JSON 보기
-                </summary>
-                <pre className="mt-1 max-h-48 overflow-auto rounded bg-black/5 p-2 text-[10px] leading-relaxed dark:bg-white/10">
-                  {JSON.stringify(form.ai.dsl, null, 2)}
-                </pre>
-                <button
-                  type="button"
-                  onClick={() =>
-                    downloadJson(`strategy_${form.ai!.name.replace(/\s+/g, "_")}.json`, form.ai!.dsl)
-                  }
-                  className="mt-1 text-[11px] text-[#2a78d6] hover:opacity-80 dark:text-[#3987e5]"
-                >
-                  전략 JSON 다운로드
-                </button>
-              </details>
+              <button
+                type="button"
+                onClick={() => setDslEditorOpen(true)}
+                className="rounded-md border border-black/20 px-2 py-1.5 text-sm font-medium text-neutral-700 transition-opacity hover:opacity-80 dark:border-white/20 dark:text-neutral-200"
+              >
+                JSON 편집
+              </button>
             )}
           </div>
-        )}
-      </div>
+          {aiError && (
+            <p className="mt-1.5 text-xs leading-relaxed text-[#d03b3b]">{aiError}</p>
+          )}
+          {form.ai && (
+            <div className="mt-2 rounded-md bg-[#2a78d6]/8 p-2.5 dark:bg-[#3987e5]/10">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-xs font-semibold">
+                  {form.ai.name}
+                  {aiDirection === "short" && (
+                    <span className="ml-1.5 rounded bg-black/10 px-1.5 py-0.5 text-[10px] font-normal dark:bg-white/15">
+                      숏
+                    </span>
+                  )}
+                </p>
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    type="button"
+                    onClick={onSave}
+                    disabled={saveBusy}
+                    className="text-xs text-[#2a78d6] hover:opacity-80 disabled:opacity-40 dark:text-[#3987e5]"
+                  >
+                    {saveBusy ? "저장 중…" : "저장"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onChange({ ...form, ai: null })}
+                    className="text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
+                  >
+                    해제 ✕
+                  </button>
+                </div>
+              </div>
+              <p className="mt-1 text-xs leading-relaxed text-neutral-500">
+                {form.ai.summary}
+              </p>
+              <p className="mt-1.5 text-[11px] text-[#2a78d6] dark:text-[#3987e5]">
+                백테스트 실행 시 위 프리셋 대신 이 전략이 사용됩니다
+              </p>
+              {advanced && (
+                <details className="mt-1.5">
+                  <summary className="cursor-pointer text-[11px] text-neutral-500">
+                    DSL JSON 보기
+                  </summary>
+                  <pre className="mt-1 max-h-48 overflow-auto rounded bg-black/5 p-2 text-[10px] leading-relaxed dark:bg-white/10">
+                    {JSON.stringify(form.ai.dsl, null, 2)}
+                  </pre>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      downloadJson(`strategy_${form.ai!.name.replace(/\s+/g, "_")}.json`, form.ai!.dsl)
+                    }
+                    className="mt-1 text-[11px] text-[#2a78d6] hover:opacity-80 dark:text-[#3987e5]"
+                  >
+                    전략 JSON 다운로드
+                  </button>
+                </details>
+              )}
+            </div>
+          )}
+        </div>
+      </details>
 
+      {/* 저장된 전략 */}
       {saved.length > 0 && (
-        <div className="rounded-md border border-black/10 dark:border-white/10 p-3">
-          <span className={labelCls}>저장된 전략 ({saved.length})</span>
-          <ul className="flex flex-col gap-1">
+        <details className={sectionCls} open>
+          <summary className={sectionTitleCls}>저장된 전략 ({saved.length})</summary>
+          <ul className="mt-2 flex flex-col gap-1">
             {saved.map((s) => (
               <li key={s.id} className="flex items-center gap-1.5">
                 <input
@@ -483,13 +499,12 @@ export default function StrategyForm({
               ? "비교 중…"
               : `선택 전략 비교 (${compareIds.length}개 선택, 2~8개)`}
           </button>
-        </div>
+        </details>
       )}
 
-      <details className="rounded-md border border-black/10 dark:border-white/10 p-3">
-        <summary className="cursor-pointer text-xs font-medium text-neutral-500">
-          거래 비용 · 초기 자본
-        </summary>
+      {/* 거래 비용 · 초기 자본 */}
+      <details className={sectionCls}>
+        <summary className={sectionTitleCls}>거래 비용 · 초기 자본</summary>
         <div className="mt-2 flex flex-col gap-2">
           <div>
             <label className={labelCls} htmlFor="fee">편도 수수료 (%)</label>
@@ -564,115 +579,118 @@ export default function StrategyForm({
         {loading ? "백테스트 실행 중…" : "백테스트 실행"}
       </button>
 
-      {advanced && selected && !form.ai && (
-        <details className="rounded-md border border-black/10 dark:border-white/10 p-3">
-          <summary className="cursor-pointer text-xs font-medium text-neutral-500">
-            고급: 최적화 그리드 · 워크포워드
-          </summary>
-          <div className="mt-2 flex flex-col gap-2">
-            <p className="text-[11px] leading-relaxed text-neutral-500">
-              파라미터별 시험할 값을 쉼표로 입력하세요 (비우면 자동 생성, 최대 10개 · 총 300조합)
-            </p>
-            {selected.params.map((p) => (
-              <div key={p.key}>
-                <label className={labelCls} htmlFor={`grid-${p.key}`}>
-                  {p.label} <span className="font-normal">({p.min}~{p.max})</span>
-                </label>
-                <input
-                  id={`grid-${p.key}`}
-                  className={inputCls}
-                  placeholder="자동"
-                  spellCheck={false}
-                  value={gridText[p.key] ?? ""}
-                  onChange={(e) =>
-                    setGridText({ ...gridText, [p.key]: e.target.value })
-                  }
-                />
-              </div>
-            ))}
-            <div>
-              <label className={labelCls} htmlFor="opt-sort">최적화 정렬 기준</label>
-              <select
-                id="opt-sort"
-                className={inputCls}
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as OptimizeOpts["sortBy"])}
-              >
-                {SORT_OPTIONS.map((o) => (
-                  <option key={o.v} value={o.v}>{o.label}</option>
+      {/* 검증 도구 — 최적화 · 워크포워드(고급) · 몬테카를로 · 멀티심볼 */}
+      <details className={sectionCls}>
+        <summary className={sectionTitleCls}>검증 도구</summary>
+        <div className="mt-2 flex flex-col gap-2">
+          {advanced && selected && !form.ai && (
+            <div className="rounded-md border border-black/10 p-2.5 dark:border-white/10">
+              <p className="text-[11px] leading-relaxed text-neutral-500">
+                파라미터별 시험할 값을 쉼표로 입력하세요 (비우면 자동 생성, 최대 10개 · 총 300조합)
+              </p>
+              <div className="mt-1.5 flex flex-col gap-2">
+                {selected.params.map((p) => (
+                  <div key={p.key}>
+                    <label className={labelCls} htmlFor={`grid-${p.key}`}>
+                      {p.label} <span className="font-normal">({p.min}~{p.max})</span>
+                    </label>
+                    <input
+                      id={`grid-${p.key}`}
+                      className={inputCls}
+                      placeholder="자동"
+                      spellCheck={false}
+                      value={gridText[p.key] ?? ""}
+                      onChange={(e) =>
+                        setGridText({ ...gridText, [p.key]: e.target.value })
+                      }
+                    />
+                  </div>
                 ))}
-              </select>
+                <div>
+                  <label className={labelCls} htmlFor="opt-sort">최적화 정렬 기준</label>
+                  <select
+                    id="opt-sort"
+                    className={inputCls}
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as OptimizeOpts["sortBy"])}
+                  >
+                    {SORT_OPTIONS.map((o) => (
+                      <option key={o.v} value={o.v}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelCls} htmlFor="wf-folds">워크포워드 폴드 수 (2~8)</label>
+                  <input
+                    id="wf-folds"
+                    type="number"
+                    min={2}
+                    max={8}
+                    step={1}
+                    className={inputCls}
+                    value={nFolds}
+                    onChange={(e) =>
+                      setNFolds(Math.max(2, Math.min(8, Number(e.target.value) || 4)))
+                    }
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onWalkforward({ grid: parseGrid(), nFolds })}
+                  disabled={walkforwarding || !form.symbol.trim()}
+                  className="rounded-md border border-black/20 px-3 py-1.5 text-xs font-medium text-neutral-700 transition-opacity hover:opacity-80 disabled:opacity-40 dark:border-white/20 dark:text-neutral-200"
+                >
+                  {walkforwarding ? "워크포워드 분석 중…" : "워크포워드 분석 (폴드별 재최적화)"}
+                </button>
+              </div>
             </div>
-            <div>
-              <label className={labelCls} htmlFor="wf-folds">워크포워드 폴드 수 (2~8)</label>
-              <input
-                id="wf-folds"
-                type="number"
-                min={2}
-                max={8}
-                step={1}
-                className={inputCls}
-                value={nFolds}
-                onChange={(e) =>
-                  setNFolds(Math.max(2, Math.min(8, Number(e.target.value) || 4)))
-                }
-              />
-            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => onOptimize({ grid: parseGrid(), sortBy })}
+            disabled={optimizing || !!form.ai || !form.symbol.trim()}
+            title={form.ai ? "최적화는 프리셋 전략에서만 가능합니다 (AI/커스텀 전략 해제 후 사용)" : undefined}
+            className="rounded-md border border-black/20 px-3 py-1.5 text-xs font-medium text-neutral-700 transition-opacity hover:opacity-80 disabled:opacity-40 dark:border-white/20 dark:text-neutral-200"
+          >
+            {optimizing ? "파라미터 최적화 중…" : "파라미터 최적화 (그리드 서치)"}
+          </button>
+
+          <button
+            type="button"
+            onClick={onMonteCarlo}
+            disabled={montecarloing || !form.symbol.trim()}
+            title="거래 순서를 수천 번 재배열해 수익률 신뢰구간을 봅니다"
+            className="rounded-md border border-black/20 px-3 py-1.5 text-xs font-medium text-neutral-700 transition-opacity hover:opacity-80 disabled:opacity-40 dark:border-white/20 dark:text-neutral-200"
+          >
+            {montecarloing ? "몬테카를로 시뮬레이션 중…" : "몬테카를로 (수익 신뢰구간)"}
+          </button>
+
+          <div className="rounded-md border border-black/10 p-2.5 dark:border-white/10">
+            <label className={labelCls} htmlFor="multi-symbols">
+              멀티 심볼 검증 (쉼표 구분, 2~8개)
+            </label>
+            <input
+              id="multi-symbols"
+              className={inputCls}
+              placeholder={QUICK_SYMBOLS[form.source].slice(0, 3).join(", ")}
+              spellCheck={false}
+              value={multiText}
+              onChange={(e) => setMultiText(e.target.value)}
+            />
             <button
               type="button"
-              onClick={() => onWalkforward({ grid: parseGrid(), nFolds })}
-              disabled={walkforwarding || !form.symbol.trim()}
-              className="rounded-md border border-black/20 px-3 py-1.5 text-xs font-medium text-neutral-700 transition-opacity hover:opacity-80 disabled:opacity-40 dark:border-white/20 dark:text-neutral-200"
+              onClick={() => onMultiSymbol(parseSymbols())}
+              disabled={multiSymboling || parseSymbols().length < 2 || parseSymbols().length > 8}
+              className="mt-1.5 w-full rounded-md border border-black/20 px-2 py-1.5 text-xs font-medium text-neutral-700 transition-opacity hover:opacity-80 disabled:opacity-40 dark:border-white/20 dark:text-neutral-200"
             >
-              {walkforwarding ? "워크포워드 분석 중…" : "워크포워드 분석 (폴드별 재최적화)"}
+              {multiSymboling
+                ? "여러 종목 백테스트 중… (첫 실행은 다운로드로 느릴 수 있음)"
+                : `현재 전략을 ${parseSymbols().length || "여러"}개 종목에서 검증`}
             </button>
           </div>
-        </details>
-      )}
-
-      <button
-        type="button"
-        onClick={() => onOptimize({ grid: parseGrid(), sortBy })}
-        disabled={optimizing || !!form.ai || !form.symbol.trim()}
-        title={form.ai ? "최적화는 프리셋 전략에서만 가능합니다 (AI/커스텀 전략 해제 후 사용)" : undefined}
-        className="rounded-md border border-black/20 px-4 py-2 text-sm font-medium text-neutral-700 transition-opacity hover:opacity-80 disabled:opacity-40 dark:border-white/20 dark:text-neutral-200"
-      >
-        {optimizing ? "파라미터 최적화 중…" : "파라미터 최적화 (그리드 서치)"}
-      </button>
-
-      <button
-        type="button"
-        onClick={onMonteCarlo}
-        disabled={montecarloing || !form.symbol.trim()}
-        title="거래 순서를 수천 번 재배열해 수익률 신뢰구간을 봅니다"
-        className="rounded-md border border-black/20 px-4 py-2 text-sm font-medium text-neutral-700 transition-opacity hover:opacity-80 disabled:opacity-40 dark:border-white/20 dark:text-neutral-200"
-      >
-        {montecarloing ? "몬테카를로 시뮬레이션 중…" : "몬테카를로 (수익 신뢰구간)"}
-      </button>
-
-      <div className="rounded-md border border-black/10 dark:border-white/10 p-3">
-        <label className={labelCls} htmlFor="multi-symbols">
-          멀티 심볼 검증 (쉼표 구분, 2~8개)
-        </label>
-        <input
-          id="multi-symbols"
-          className={inputCls}
-          placeholder={QUICK_SYMBOLS[form.source].slice(0, 3).join(", ")}
-          spellCheck={false}
-          value={multiText}
-          onChange={(e) => setMultiText(e.target.value)}
-        />
-        <button
-          type="button"
-          onClick={() => onMultiSymbol(parseSymbols())}
-          disabled={multiSymboling || parseSymbols().length < 2 || parseSymbols().length > 8}
-          className="mt-1.5 w-full rounded-md border border-black/20 px-2 py-1.5 text-xs font-medium text-neutral-700 transition-opacity hover:opacity-80 disabled:opacity-40 dark:border-white/20 dark:text-neutral-200"
-        >
-          {multiSymboling
-            ? "여러 종목 백테스트 중… (첫 실행은 다운로드로 느릴 수 있음)"
-            : `현재 전략을 ${parseSymbols().length || "여러"}개 종목에서 검증`}
-        </button>
-      </div>
+        </div>
+      </details>
 
       {dslEditorOpen && (
         <DslEditor

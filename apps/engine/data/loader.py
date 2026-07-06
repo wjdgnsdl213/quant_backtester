@@ -3,7 +3,13 @@
 source="crypto" → ccxt 바이낸스 현물 (BTC/USDT 형식) — 기본
 source="stock"  → yfinance (미국: AAPL, 한국: 005930.KS 형식)
 
-한 번 받은 데이터는 data/cache/*.csv 로 캐시해서 재요청 시 즉시 반환한다.
+캐시는 종목당 파일 하나(source_symbol_interval.csv)로 그 종목이 지금까지 받아온
+최대 범위를 유지한다. 요청 구간이 캐시 범위 안에 완전히 들어오면 파일을 그대로
+슬라이스해 반환하고, 벗어난 부분(과거 확장/최신 확장)만 증분으로 받아 병합한다 —
+"어제까지 캐시해둔 종목의 오늘 하루치"를 요청해도 전체를 재다운로드하지 않는다.
+
+구 버전(파일명에 start_end가 들어가던 방식)의 캐시 파일은 더 이상 사용되지 않으며
+그대로 두어도 무해하다 (안 쓰일 뿐 삭제할 필요는 없음).
 """
 
 import re
@@ -27,33 +33,73 @@ INTERVALS = {
 }
 
 
-def _cache_path(source: str, symbol: str, interval: str, start: str, end: str) -> Path:
-    safe = re.sub(r"[^A-Za-z0-9._-]", "_", f"{source}_{symbol}_{interval}_{start}_{end}")
+def _cache_path(source: str, symbol: str, interval: str) -> Path:
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", f"{source}_{symbol}_{interval}")
     return CACHE_DIR / f"{safe}.csv"
+
+
+def _read_cache(path: Path) -> pd.DataFrame | None:
+    if not path.exists():
+        return None
+    df = pd.read_csv(path, index_col=0, parse_dates=True)
+    return df if not df.empty else None
+
+
+def _write_cache(path: Path, df: pd.DataFrame) -> None:
+    df.sort_index().to_csv(path)
+
+
+def _fetch(source: str, symbol: str, interval: str, start: str, end: str) -> pd.DataFrame:
+    if source == "stock":
+        return _load_stock(symbol, interval, start, end)
+    if source == "crypto":
+        return _load_crypto(symbol, interval, start, end)
+    raise ValueError(f"지원하지 않는 소스: {source}")
 
 
 def load_ohlcv(source: str, symbol: str, interval: str, start: str, end: str) -> pd.DataFrame:
     if interval not in INTERVALS:
         raise ValueError(f"지원하지 않는 인터벌: {interval}")
 
-    cache = _cache_path(source, symbol, interval, start, end)
-    if cache.exists():
-        df = pd.read_csv(cache, index_col=0, parse_dates=True)
-        if not df.empty:
-            return df
+    req_start, req_end = pd.Timestamp(start), pd.Timestamp(end)
+    path = _cache_path(source, symbol, interval)
+    cached = _read_cache(path)
 
-    if source == "stock":
-        df = _load_stock(symbol, interval, start, end)
-    elif source == "crypto":
-        df = _load_crypto(symbol, interval, start, end)
-    else:
-        raise ValueError(f"지원하지 않는 소스: {source}")
+    if cached is None:
+        df = _fetch(source, symbol, interval, start, end)
+        if df.empty:
+            raise ValueError(f"데이터가 없습니다: {source}/{symbol} ({start}~{end})")
+        _write_cache(path, df)
+        return df.loc[req_start:req_end]
 
-    if df.empty:
+    cache_min, cache_max = cached.index.min(), cached.index.max()
+
+    if req_start >= cache_min and req_end <= cache_max:
+        sliced = cached.loc[req_start:req_end]
+        if not sliced.empty:
+            return sliced
+        # 캐시 범위 안이지만 비어있으면(휴장일 등) 아래 병합 경로로 폴백
+
+    new_parts = [cached]
+    if req_start < cache_min:
+        gap_end = (cache_min - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+        fetched = _fetch(source, symbol, interval, start, gap_end)
+        if not fetched.empty:
+            new_parts.append(fetched)
+    if req_end > cache_max:
+        gap_start = (cache_max + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+        fetched = _fetch(source, symbol, interval, gap_start, end)
+        if not fetched.empty:
+            new_parts.append(fetched)
+
+    merged = pd.concat(new_parts)
+    merged = merged[~merged.index.duplicated(keep="last")].sort_index()
+    _write_cache(path, merged)
+
+    sliced = merged.loc[req_start:req_end]
+    if sliced.empty:
         raise ValueError(f"데이터가 없습니다: {source}/{symbol} ({start}~{end})")
-
-    df.to_csv(cache)
-    return df
+    return sliced
 
 
 def _load_stock(symbol: str, interval: str, start: str, end: str) -> pd.DataFrame:

@@ -78,3 +78,40 @@ class TestTrades:
         result = backtester.run(ramp_df, _signal(ramp_df, range(3, 40)), 0.001, 0.0005, CAPITAL)
         assert not np.isnan(result["equity"].to_numpy()).any()
         assert not np.isnan(result["drawdown"].to_numpy()).any()
+
+
+def _short_signal(df, on_bars) -> pd.Series:
+    s = pd.Series(0.0, index=df.index)
+    s.iloc[list(on_bars)] = -1.0
+    return s
+
+
+class TestShort:
+    """포지션 값 -1(숏)은 backtester가 방향과 무관하게 pos*ret로 손익을 계산한다."""
+
+    def test_short_profits_when_price_falls(self):
+        df = make_df([100.0] * 10 + [90.0] * 10)  # 10번 봉에서 10% 하락
+        result = backtester.run(df, _short_signal(df, range(9, 20)), 0.0, 0.0, CAPITAL)
+        assert result["equity"].iloc[-1] == pytest.approx(CAPITAL * 1.10)
+
+    def test_short_loses_when_price_rises(self):
+        df = make_df([100.0] * 10 + [110.0] * 10)
+        result = backtester.run(df, _short_signal(df, range(9, 20)), 0.0, 0.0, CAPITAL)
+        assert result["equity"].iloc[-1] == pytest.approx(CAPITAL * 0.90)
+
+    def test_short_trade_direction_recorded(self, flat_df):
+        result = backtester.run(flat_df, _short_signal(flat_df, range(5, 9)), 0.0, 0.0, CAPITAL)
+        closed = [t for t in result["trades"] if t["exit_time"] is not None]
+        assert len(closed) == 1
+        assert closed[0]["direction"] == "short"
+
+    def test_short_round_trip_cost_deducted(self, flat_df):
+        fee, slip = 0.001, 0.0005
+        result = backtester.run(flat_df, _short_signal(flat_df, range(5, 9)), fee, slip, CAPITAL)
+        expected = CAPITAL * (1 - (fee + slip)) ** 2
+        assert result["equity"].iloc[-1] == pytest.approx(expected)
+
+    def test_long_trade_direction_recorded(self, flat_df):
+        result = backtester.run(flat_df, _signal(flat_df, range(5, 9)), 0.0, 0.0, CAPITAL)
+        closed = [t for t in result["trades"] if t["exit_time"] is not None]
+        assert closed[0]["direction"] == "long"

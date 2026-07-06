@@ -62,3 +62,18 @@ def test_risk_bounds():
         StrategyDSL.model_validate({**VALID, "risk": {"stop_loss_pct": -5}})
     with pytest.raises(ValidationError):
         StrategyDSL.model_validate({**VALID, "risk": {"stop_loss_pct": 95}})
+
+
+def test_direction_defaults_to_long():
+    dsl = StrategyDSL.model_validate(VALID)
+    assert dsl.direction == "long"
+
+
+def test_direction_accepts_short():
+    dsl = StrategyDSL.model_validate({**VALID, "direction": "short"})
+    assert dsl.direction == "short"
+
+
+def test_direction_rejects_invalid_value():
+    with pytest.raises(ValidationError):
+        StrategyDSL.model_validate({**VALID, "direction": "sideways"})
