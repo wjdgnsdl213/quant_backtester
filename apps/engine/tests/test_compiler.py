@@ -112,6 +112,34 @@ class TestShortStateMachine:
         assert pos.iloc[4] == 0.0
 
 
+class TestChannelBreakout:
+    """회귀 테스트: close vs highest/lowest 채널 돌파가 실제로 발동해야 한다.
+
+    highest/lowest가 당일 봉을 포함해 계산되던 버전에서는 close가 항상 high 이하이므로
+    'close > highest' 상향 돌파가 수학적으로 절대 참이 될 수 없었다 (0건 거래로 조용히 실패).
+    """
+
+    def test_close_can_cross_above_highest_channel(self):
+        prices = [100] * 25 + [130]  # 오랜 횡보 후 급등
+        df = make_df(prices)
+        dsl = _dsl(
+            {"op": "cross_above", "left": CLOSE, "right": {"ind": "highest", "params": {"period": 20}}},
+            NEVER,
+        )
+        entry = compiler.eval_condition(dsl.entry, df)
+        assert entry.any()
+
+    def test_close_can_cross_below_lowest_channel(self):
+        prices = [100] * 25 + [70]  # 오랜 횡보 후 급락
+        df = make_df(prices)
+        dsl = _dsl(
+            {"op": "cross_below", "left": CLOSE, "right": {"ind": "lowest", "params": {"period": 20}}},
+            NEVER,
+        )
+        entry = compiler.eval_condition(dsl.entry, df)
+        assert entry.any()
+
+
 class TestLogic:
     def test_and_or_not(self, ramp_df):
         above_120 = {"op": "gt", "left": CLOSE, "right": {"const": 120}}

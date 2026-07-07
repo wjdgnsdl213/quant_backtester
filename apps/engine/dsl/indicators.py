@@ -66,6 +66,23 @@ def _macd_line(df: pd.DataFrame, p: dict) -> pd.Series:
     return fast - slow
 
 
+def _highest(df: pd.DataFrame, p: dict) -> pd.Series:
+    """당일 이전 N봉 고가의 최댓값 (당일 봉 제외 — 돈치안 채널 정의).
+
+    당일을 포함하면 close는 항상 high 이하이므로 'close가 highest를 상향 돌파'가
+    수학적으로 절대 참이 될 수 없다 (당일이 신고가인 순간 highest==당일 high).
+    돌파 전략이 실제로 작동하려면 반드시 당일 이전 구간만 봐야 한다.
+    """
+    period = int(p["period"])
+    return df["high"].rolling(period).max().shift(1)
+
+
+def _lowest(df: pd.DataFrame, p: dict) -> pd.Series:
+    """당일 이전 N봉 저가의 최솟값 (당일 봉 제외). _highest와 대칭인 이유는 그 함수 참고."""
+    period = int(p["period"])
+    return df["low"].rolling(period).min().shift(1)
+
+
 def _atr(df: pd.DataFrame, p: dict) -> pd.Series:
     period = int(p["period"])
     prev_close = df["close"].shift(1)
@@ -128,11 +145,11 @@ _register(IndicatorSpec(
     "roc", "수익률 (ROC)", "최근 N봉 수익률(%). 0보다 크면 상승 추세",
     _PERIOD(60, 1, 400), lambda df, p: df["close"].pct_change(int(p["period"])) * 100, unit="percent"))
 _register(IndicatorSpec(
-    "highest", "최고가 채널", "최근 N봉 고가의 최댓값 (돌파 전략용)",
-    _PERIOD(20, 2, 400), lambda df, p: df["high"].rolling(int(p["period"])).max()))
+    "highest", "최고가 채널", "당일 이전 N봉 고가의 최댓값 (돌파 전략용, 당일 봉 제외)",
+    _PERIOD(20, 2, 400), _highest))
 _register(IndicatorSpec(
-    "lowest", "최저가 채널", "최근 N봉 저가의 최솟값",
-    _PERIOD(20, 2, 400), lambda df, p: df["low"].rolling(int(p["period"])).min()))
+    "lowest", "최저가 채널", "당일 이전 N봉 저가의 최솟값 (돌파 전략용, 당일 봉 제외)",
+    _PERIOD(20, 2, 400), _lowest))
 _register(IndicatorSpec(
     "volume_sma", "거래량 이동평균", "거래량의 N봉 평균",
     _PERIOD(20, 2, 400), lambda df, p: df["volume"].rolling(int(p["period"])).mean(), unit="volume"))
