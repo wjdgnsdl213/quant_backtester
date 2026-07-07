@@ -47,12 +47,17 @@ def describe_condition(cond: Condition) -> str:
 
 
 def describe(dsl: StrategyDSL) -> str:
-    parts = [
-        f"진입: {describe_condition(dsl.entry)}",
-        f"청산: {describe_condition(dsl.exit)}",
-    ]
+    parts = []
+    if dsl.direction == "short":
+        parts.append("숏(하락 베팅)")
+    parts.append(f"진입: {describe_condition(dsl.entry)}")
+    parts.append(f"청산: {describe_condition(dsl.exit)}")
     if dsl.risk.stop_loss_pct:
-        parts.append(f"손절: 진입가 대비 -{dsl.risk.stop_loss_pct:g}%")
+        parts.append(f"손절: 진입가 대비 {dsl.risk.stop_loss_pct:g}%")
     if dsl.risk.take_profit_pct:
-        parts.append(f"익절: 진입가 대비 +{dsl.risk.take_profit_pct:g}%")
+        parts.append(f"익절: 진입가 대비 {dsl.risk.take_profit_pct:g}%")
+    if dsl.risk.size_pct < 100:
+        parts.append(f"진입 비중: 자본의 {dsl.risk.size_pct:g}%")
+    if dsl.risk.intrabar and (dsl.risk.stop_loss_pct or dsl.risk.take_profit_pct):
+        parts.append("손절/익절 장중 판정")
     return " · ".join(parts)

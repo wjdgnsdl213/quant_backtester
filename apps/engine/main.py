@@ -25,13 +25,14 @@ import backtester
 import metrics
 import montecarlo
 import optimizer
+import signals
 import store
 import strategies
 import walkforward
 from data import loader
 from dsl import compiler, indicators
-from dsl.describe import describe
-from dsl.schema import StrategyDSL
+from dsl.describe import describe, _operand
+from dsl.schema import Compare, IndicatorRef, Logic, Not, StrategyDSL
 
 app = FastAPI(title="fable engine")
 
@@ -111,13 +112,46 @@ def _resolve_dsl(strategy: str, params: dict, dsl_dict: dict | None) -> tuple[St
     return dsl, info
 
 
+# 가격 축에 겹쳐 그릴 수 있는 지표만 (RSI·ROC는 %축, MACD·ATR은 가격차 스케일이라 제외)
+OVERLAYABLE = {"sma", "ema", "bb_upper", "bb_mid", "bb_lower", "highest", "lowest"}
+MAX_OVERLAYS = 4
+
+
+def _collect_overlay_refs(cond, acc: dict) -> None:
+    """조건 트리에서 가격 오버레이 가능한 지표 참조를 (중복 제거해) 수집한다."""
+    if isinstance(cond, Compare):
+        for ref in (cond.left, cond.right):
+            if isinstance(ref, IndicatorRef) and ref.ind in OVERLAYABLE:
+                key = (ref.ind, tuple(sorted(ref.params.items())))
+                acc.setdefault(key, ref)
+    elif isinstance(cond, Logic):
+        for a in cond.args:
+            _collect_overlay_refs(a, acc)
+    elif isinstance(cond, Not):
+        _collect_overlay_refs(cond.arg, acc)
+
+
+def _build_overlays(dsl: StrategyDSL, df: pd.DataFrame) -> list[dict]:
+    refs: dict = {}
+    _collect_overlay_refs(dsl.entry, refs)
+    _collect_overlay_refs(dsl.exit, refs)
+    overlays = []
+    for ref in list(refs.values())[:MAX_OVERLAYS]:
+        series = indicators.compute(ref.ind, df, ref.params)
+        overlays.append({
+            "label": _operand(ref),
+            "values": [None if pd.isna(v) else round(float(v), 4) for v in series],
+        })
+    return overlays
+
+
 @app.post("/backtest")
 def run_backtest(req: BacktestRequest):
     dsl, strategy_info = _resolve_dsl(req.strategy, req.params, req.dsl)
     df = _load_df(req.source, req.symbol, req.interval, req.start, req.end)
 
-    signal = compiler.build_position(dsl, df)
-    result = backtester.run(df, signal, req.fee, req.slippage, req.initial_capital)
+    signal, fills = compiler.compile_strategy(dsl, df)
+    result = backtester.run(df, signal, req.fee, req.slippage, req.initial_capital, fills)
 
     ppy = metrics.periods_per_year(req.source, req.interval)
 
@@ -142,8 +176,13 @@ def run_backtest(req: BacktestRequest):
             "close": _round_list(df["close"]),
             "volume": _round_list(df["volume"]),
         },
+        "overlays": _build_overlays(dsl, df),
         "trades": result["trades"],
-        "notes": "시그널은 종가 기준 평가, 체결은 다음 봉 시가 근사. 손절/익절은 종가 기준 판정(장중 터치 미반영).",
+        "notes": (
+            "시그널은 종가 기준 평가, 체결은 다음 봉 시가 근사. "
+            + ("손절/익절은 장중 저가/고가 터치 판정(체결가는 임계값, 갭은 시가)."
+               if dsl.risk.intrabar else "손절/익절은 종가 기준 판정(장중 터치 미반영).")
+        ),
     }
 
 
@@ -182,8 +221,8 @@ class MonteCarloRequest(BacktestRequest):
 def run_montecarlo(req: MonteCarloRequest):
     dsl, strategy_info = _resolve_dsl(req.strategy, req.params, req.dsl)
     df = _load_df(req.source, req.symbol, req.interval, req.start, req.end)
-    signal = compiler.build_position(dsl, df)
-    result = backtester.run(df, signal, req.fee, req.slippage, req.initial_capital)
+    signal, fills = compiler.compile_strategy(dsl, df)
+    result = backtester.run(df, signal, req.fee, req.slippage, req.initial_capital, fills)
     try:
         return {"strategy": strategy_info,
                 **montecarlo.run(result["trades"], req.n_sims, req.initial_capital)}
@@ -218,8 +257,8 @@ def run_multisymbol(req: MultiSymbolRequest):
         except HTTPException as e:
             errors.append({"symbol": symbol, "detail": str(e.detail)})
             continue
-        signal = compiler.build_position(dsl, df)
-        result = backtester.run(df, signal, req.fee, req.slippage, req.initial_capital)
+        signal, fills = compiler.compile_strategy(dsl, df)
+        result = backtester.run(df, signal, req.fee, req.slippage, req.initial_capital, fills)
         split = metrics.compute_split(result, ppy)
         equity = result["equity"]
         items.append({
@@ -284,8 +323,8 @@ def run_compare(req: CompareRequest):
             dsl = StrategyDSL.model_validate(saved[sid]["dsl"])
         except ValidationError:
             raise HTTPException(400, f"저장된 전략(id={sid})이 손상되었습니다")
-        signal = compiler.build_position(dsl, df)
-        result = backtester.run(df, signal, req.fee, req.slippage, req.initial_capital)
+        signal, fills = compiler.compile_strategy(dsl, df)
+        result = backtester.run(df, signal, req.fee, req.slippage, req.initial_capital, fills)
         if benchmark is None:
             benchmark = _round_list(result["benchmark"])
         items.append({
@@ -354,6 +393,43 @@ def delete_strategy(strategy_id: int):
     if not store.delete(strategy_id):
         raise HTTPException(404, "해당 전략이 없습니다")
     return {"ok": True}
+
+
+class WatchRequest(BaseModel):
+    strategy_id: int
+    source: Literal["stock", "crypto"]
+    symbol: str = Field(min_length=1, max_length=30)
+    interval: Literal["1d", "1h", "4h", "1wk"] = "1d"
+
+
+@app.get("/watches")
+def list_watches():
+    return [{k: v for k, v in w.items() if k != "dsl"} for w in store.list_watches()]
+
+
+@app.post("/watches")
+def add_watch(req: WatchRequest):
+    if not any(s["id"] == req.strategy_id for s in store.list_all()):
+        raise HTTPException(404, "해당 저장 전략이 없습니다")
+    try:
+        wid = store.add_watch(req.strategy_id, req.source, req.symbol.strip(), req.interval)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"id": wid}
+
+
+@app.delete("/watches/{watch_id}")
+def delete_watch(watch_id: int):
+    if not store.delete_watch(watch_id):
+        raise HTTPException(404, "해당 감시 항목이 없습니다")
+    return {"ok": True}
+
+
+@app.post("/signals/check")
+def check_signals():
+    """등록된 모든 감시 항목의 최신 시그널 상태 (마지막 봉 종가 기준)."""
+    results = [signals.check_watch(w) for w in store.list_watches()]
+    return {"results": results}
 
 
 class GenerateRequest(BaseModel):

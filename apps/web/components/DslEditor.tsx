@@ -18,7 +18,12 @@ const TEMPLATE = `{
     "left": { "ind": "rsi", "params": { "period": 14 } },
     "right": { "const": 70 }
   },
-  "risk": { "stop_loss_pct": 5, "take_profit_pct": null }
+  "risk": {
+    "stop_loss_pct": 5,
+    "take_profit_pct": null,
+    "size_pct": 100,
+    "intrabar": false
+  }
 }`;
 
 export default function DslEditor({

@@ -109,8 +109,8 @@ def evaluate(preset_id: str, params: dict, df: pd.DataFrame, fee: float,
              slippage: float, capital: float, ppy: float) -> dict:
     """조합 하나를 백테스트해 전체/IS/OOS 지표 행으로 만든다."""
     dsl = StrategyDSL.model_validate(strategies.build_dsl(preset_id, params))
-    signal = compiler.build_position(dsl, df)
-    result = backtester.run(df, signal, fee, slippage, capital)
+    signal, fills = compiler.compile_strategy(dsl, df)
+    result = backtester.run(df, signal, fee, slippage, capital, fills)
     full = metrics.compute(result, ppy)
     split = metrics.compute_split(result, ppy)
     row = {

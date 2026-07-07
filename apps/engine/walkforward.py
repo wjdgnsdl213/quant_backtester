@@ -67,8 +67,8 @@ def run(preset_id: str, df: pd.DataFrame, fee: float, slippage: float,
         best_params, best_sharpe = None, -np.inf
         for params in combos:
             dsl = StrategyDSL.model_validate(strategies.build_dsl(preset_id, params))
-            signal = compiler.build_position(dsl, train_df)
-            ret = backtester.run(train_df, signal, fee, slippage, capital)["returns"]
+            signal, fills = compiler.compile_strategy(dsl, train_df)
+            ret = backtester.run(train_df, signal, fee, slippage, capital, fills)["returns"]
             sharpe = float(ret.mean() / ret.std() * np.sqrt(ppy)) if ret.std() > 0 else 0.0
             if sharpe > best_sharpe:
                 best_params, best_sharpe = params, sharpe
@@ -76,8 +76,8 @@ def run(preset_id: str, df: pd.DataFrame, fee: float, slippage: float,
         # 검증: 검증 끝까지 시그널 계산 후 검증 구간 수익률만 평가
         dsl = StrategyDSL.model_validate(strategies.build_dsl(preset_id, best_params))
         full_df = df.iloc[:test_end]
-        signal = compiler.build_position(dsl, full_df)
-        returns = backtester.run(full_df, signal, fee, slippage, capital)["returns"]
+        signal, fills = compiler.compile_strategy(dsl, full_df)
+        returns = backtester.run(full_df, signal, fee, slippage, capital, fills)["returns"]
         test_ret = returns.iloc[train_end:test_end]
         oos_parts.append(test_ret)
 

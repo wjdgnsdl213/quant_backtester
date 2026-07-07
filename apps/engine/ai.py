@@ -40,7 +40,12 @@ def _system_prompt() -> str:
   "direction": "long" | "short",  // long=상승에 베팅(매수 진입), short=하락에 베팅(공매도 진입). 기본값 long
   "entry": <조건>,   // 진입 조건
   "exit": <조건>,    // 청산 조건
-  "risk": {{"stop_loss_pct": 숫자 | null, "take_profit_pct": 숫자 | null}}
+  "risk": {{
+    "stop_loss_pct": 숫자 | null,
+    "take_profit_pct": 숫자 | null,
+    "size_pct": 1~100,   // 진입 시 투입 자본 비중 %. 기본 100. "자본의 30%만" 같은 요청 시 설정
+    "intrabar": true | false  // 손절/익절을 장중 저가/고가 터치로 판정. 기본 false(종가 기준). "장중 손절" 요청 시 true
+  }}
 }}
 
 <조건>은 다음 중 하나:

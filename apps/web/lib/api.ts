@@ -64,6 +64,7 @@ export type BacktestResult = {
     close: number[];
     volume: number[];
   };
+  overlays: { label: string; values: (number | null)[] }[];
   trades: Trade[];
 };
 
@@ -313,6 +314,57 @@ export type CompareRequest = {
 
 export async function runCompare(req: CompareRequest): Promise<CompareResult> {
   return postJson("/compare", req, "전략 비교 실패");
+}
+
+export type Watch = {
+  id: number;
+  strategy_id: number;
+  strategy_name: string;
+  source: "stock" | "crypto";
+  symbol: string;
+  interval: string;
+  created_at: string;
+};
+
+export type SignalStatus = "entry_signal" | "exit_signal" | "holding" | "idle" | "error";
+
+export type SignalResult = {
+  id: number;
+  strategy_id: number;
+  strategy_name: string;
+  source: "stock" | "crypto";
+  symbol: string;
+  interval: string;
+  status: SignalStatus;
+  direction?: "long" | "short";
+  holding_bars?: number;
+  last_bar?: string;
+  last_close?: number;
+  detail?: string;
+};
+
+export async function fetchWatches(): Promise<Watch[]> {
+  const res = await fetch(`${ENGINE_URL}/watches`);
+  if (!res.ok) throw new Error("감시 목록을 불러오지 못했습니다");
+  return res.json();
+}
+
+export async function addWatch(req: {
+  strategy_id: number;
+  source: "stock" | "crypto";
+  symbol: string;
+  interval: string;
+}): Promise<{ id: number }> {
+  return postJson("/watches", req, "감시 추가 실패");
+}
+
+export async function deleteWatch(id: number): Promise<void> {
+  const res = await fetch(`${ENGINE_URL}/watches/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("감시 삭제에 실패했습니다");
+}
+
+export async function checkSignals(): Promise<{ results: SignalResult[] }> {
+  return postJson("/signals/check", {}, "시그널 확인 실패");
 }
 
 export async function fetchSavedStrategies(): Promise<SavedStrategy[]> {

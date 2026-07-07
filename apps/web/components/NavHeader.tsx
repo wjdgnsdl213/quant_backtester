@@ -11,6 +11,7 @@ const NAV_LINKS = [
   { href: "/", label: "홈" },
   { href: "/backtest", label: "백테스트" },
   { href: "/strategies", label: "저장된 전략" },
+  { href: "/signals", label: "실전 시그널" },
 ];
 
 function EngineStatus() {

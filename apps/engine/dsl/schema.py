@@ -81,8 +81,10 @@ Not.model_rebuild()
 
 
 class Risk(BaseModel):
-    stop_loss_pct: float | None = Field(None, gt=0, le=90, description="진입가 대비 손절 % (종가 기준 판정)")
+    stop_loss_pct: float | None = Field(None, gt=0, le=90, description="진입가 대비 손절 %")
     take_profit_pct: float | None = Field(None, gt=0, le=1000, description="진입가 대비 익절 %")
+    size_pct: float = Field(100, gt=0, le=100, description="진입 시 투입 자본 비중 % (기본 100=전액)")
+    intrabar: bool = Field(False, description="손절/익절을 장중 저가/고가 터치로 판정 (기본은 종가 기준)")
 
 
 class StrategyDSL(BaseModel):

@@ -112,6 +112,113 @@ class TestShortStateMachine:
         assert pos.iloc[4] == 0.0
 
 
+class TestSizing:
+    def test_size_pct_scales_position(self):
+        closes = [100, 100, 90, 90, 90, 90]
+        df = make_df(closes)
+        dsl = _dsl({"op": "cross_below", "left": CLOSE, "right": {"const": 95}}, NEVER,
+                    {"size_pct": 30})
+        pos = compiler.build_position(dsl, df)
+        assert pos.iloc[3] == pytest.approx(0.3)
+
+    def test_short_size_pct_is_negative(self):
+        closes = [100, 100, 90, 90, 90, 90]
+        df = make_df(closes)
+        dsl = _dsl({"op": "cross_below", "left": CLOSE, "right": {"const": 95}}, NEVER,
+                    {"size_pct": 50}, direction="short")
+        pos = compiler.build_position(dsl, df)
+        assert pos.iloc[3] == pytest.approx(-0.5)
+
+    def test_default_size_is_full(self):
+        closes = [100, 100, 90, 90]
+        df = make_df(closes)
+        dsl = _dsl({"op": "cross_below", "left": CLOSE, "right": {"const": 95}}, NEVER)
+        pos = compiler.build_position(dsl, df)
+        assert pos.iloc[3] == pytest.approx(1.0)
+
+
+class TestIntrabarStops:
+    """장중 저가/고가 터치 판정 — 종가가 회복해도 손절이 발동해야 한다."""
+
+    def _entry_dsl(self, risk, direction="long"):
+        return _dsl({"op": "cross_below", "left": CLOSE, "right": {"const": 95}}, NEVER,
+                     risk, direction=direction)
+
+    def test_intrabar_stop_fires_on_low_touch_despite_close_recovery(self):
+        # 진입가 = open[3] = 90 (전일 종가). 5번 봉: 저가 84(손절선 85.5 터치), 종가 90(회복)
+        closes = [100, 100, 90, 90, 90, 90, 90, 90]
+        df = make_df(closes)
+        df.loc[df.index[5], "low"] = 84.0
+        dsl = self._entry_dsl({"stop_loss_pct": 5, "intrabar": True})
+        pos, fills = compiler.compile_strategy(dsl, df)
+        assert pos.iloc[5] == 0.0  # 장중 터치로 청산
+        assert 5 in fills
+        assert fills[5] == pytest.approx(90 * 0.95)  # 체결가 = 손절선
+
+        # 종가 기준(intrabar=False)이면 종가 90 > 85.5 → 청산 안 됨
+        dsl_close = self._entry_dsl({"stop_loss_pct": 5, "intrabar": False})
+        pos_close, fills_close = compiler.compile_strategy(dsl_close, df)
+        assert pos_close.iloc[5] == 1.0
+        assert fills_close == {}
+
+    def test_gap_down_fills_at_open(self):
+        # 5번 봉이 시가 80으로 갭 하락 (손절선 85.5 아래) → 체결가는 시가 80
+        closes = [100, 100, 90, 90, 90, 80, 80, 80]
+        df = make_df(closes)  # open[5] = 전일 종가 90... 시가를 직접 조작
+        df.loc[df.index[5], "open"] = 80.0
+        df.loc[df.index[5], "low"] = 79.0
+        dsl = self._entry_dsl({"stop_loss_pct": 5, "intrabar": True})
+        pos, fills = compiler.compile_strategy(dsl, df)
+        assert fills[5] == pytest.approx(80.0)  # 갭: 손절선이 아니라 시가 체결
+
+    def test_intrabar_take_profit_on_high_touch(self):
+        # 진입가 90, 익절 10% → 99. 5번 봉 고가 100 터치, 종가 90
+        closes = [100, 100, 90, 90, 90, 90, 90, 90]
+        df = make_df(closes)
+        df.loc[df.index[5], "high"] = 100.0
+        dsl = self._entry_dsl({"take_profit_pct": 10, "intrabar": True})
+        pos, fills = compiler.compile_strategy(dsl, df)
+        assert pos.iloc[5] == 0.0
+        assert fills[5] == pytest.approx(99.0)
+
+    def test_short_intrabar_stop_on_high_touch(self):
+        # 숏 진입가 90, 손절 5% → 94.5. 5번 봉 고가 95 터치, 종가 90
+        closes = [100, 100, 90, 90, 90, 90, 90, 90]
+        df = make_df(closes)
+        df.loc[df.index[5], "high"] = 95.0
+        dsl = self._entry_dsl({"stop_loss_pct": 5, "intrabar": True}, direction="short")
+        pos, fills = compiler.compile_strategy(dsl, df)
+        assert pos.iloc[5] == 0.0
+        assert fills[5] == pytest.approx(94.5)
+
+    def test_equity_uses_fill_price_not_close(self):
+        """장중 손절 봉의 손익은 종가(회복)가 아니라 체결가 기준이어야 한다."""
+        import backtester
+        closes = [100.0] * 3 + [90, 90, 90, 90, 90]
+        df = make_df(closes)
+        df.loc[df.index[5], "low"] = 84.0  # 손절선 85.5 터치 후 종가 90 회복
+        dsl = self._entry_dsl({"stop_loss_pct": 5, "intrabar": True})
+        pos, fills = compiler.compile_strategy(dsl, df)
+        result = backtester.run(df, pos, 0.0, 0.0, 1_000_000)
+        result_fill = backtester.run(df, pos, 0.0, 0.0, 1_000_000, fills)
+        # 체결가 반영 시: 5번 봉 수익률 = 85.5/90 - 1 = -5% 손실이 자산에 반영
+        assert result_fill["equity"].iloc[-1] < result["equity"].iloc[-1]
+        assert result_fill["equity"].iloc[-1] == pytest.approx(1_000_000 * (85.5 / 90), rel=1e-6)
+
+    def test_trades_record_fill_price_and_trigger_bar(self):
+        import backtester
+        closes = [100.0] * 3 + [90, 90, 90, 90, 90]
+        df = make_df(closes)
+        df.loc[df.index[5], "low"] = 84.0
+        dsl = self._entry_dsl({"stop_loss_pct": 5, "intrabar": True})
+        pos, fills = compiler.compile_strategy(dsl, df)
+        trades = backtester.run(df, pos, 0.0, 0.0, 1_000_000, fills)["trades"]
+        closed = [t for t in trades if t["exit_time"] is not None]
+        assert len(closed) == 1
+        assert closed[0]["exit_price"] == pytest.approx(85.5)
+        assert closed[0]["exit_time"] == df.index[5].isoformat()  # 트리거 봉 시각
+
+
 class TestChannelBreakout:
     """회귀 테스트: close vs highest/lowest 채널 돌파가 실제로 발동해야 한다.
 

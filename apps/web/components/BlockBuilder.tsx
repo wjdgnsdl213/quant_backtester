@@ -97,14 +97,16 @@ export default function BlockBuilder({
       const entry = importGroup(dsl.entry);
       const exit = importGroup(dsl.exit);
       if (entry && exit) {
-        const risk = (dsl.risk as Record<string, number | null>) ?? {};
+        const risk = (dsl.risk as Record<string, number | boolean | null>) ?? {};
         const direction = dsl.direction === "short" ? "short" : "long";
         return {
           name: initial.name,
           entry,
           exit,
-          stopLoss: risk.stop_loss_pct ?? 0,
-          takeProfit: risk.take_profit_pct ?? 0,
+          stopLoss: (risk.stop_loss_pct as number | null) ?? 0,
+          takeProfit: (risk.take_profit_pct as number | null) ?? 0,
+          sizePct: (risk.size_pct as number | undefined) ?? 100,
+          intrabar: risk.intrabar === true,
           direction: direction as "long" | "short",
           imported: true,
         };
@@ -119,6 +121,8 @@ export default function BlockBuilder({
       },
       stopLoss: 0,
       takeProfit: 0,
+      sizePct: 100,
+      intrabar: false,
       direction: "long" as const,
       imported: false,
     };
@@ -129,6 +133,8 @@ export default function BlockBuilder({
   const [exit, setExit] = useState<Group>(init.exit);
   const [stopLoss, setStopLoss] = useState<number>(init.stopLoss || 0);
   const [takeProfit, setTakeProfit] = useState<number>(init.takeProfit || 0);
+  const [sizePct, setSizePct] = useState<number>(init.sizePct);
+  const [intrabar, setIntrabar] = useState<boolean>(init.intrabar);
   const [direction, setDirection] = useState<"long" | "short">(init.direction);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -145,6 +151,8 @@ export default function BlockBuilder({
       risk: {
         stop_loss_pct: stopLoss > 0 ? stopLoss : null,
         take_profit_pct: takeProfit > 0 ? takeProfit : null,
+        size_pct: sizePct,
+        intrabar,
       },
     };
     try {
@@ -410,6 +418,39 @@ export default function BlockBuilder({
               />
             </div>
           </div>
+
+          <div className="grid grid-cols-2 items-end gap-2">
+            <div>
+              <label className={labelCls} htmlFor="bb-size">진입 비중 % (자본 대비)</label>
+              <input
+                id="bb-size"
+                type="number"
+                min={1}
+                max={100}
+                step={1}
+                className={`${inputCls} w-full`}
+                value={sizePct}
+                onChange={(e) =>
+                  setSizePct(Math.max(1, Math.min(100, Number(e.target.value) || 100)))
+                }
+              />
+            </div>
+            <label className="flex cursor-pointer items-center gap-2 pb-1.5 text-xs text-neutral-700 dark:text-neutral-200">
+              <input
+                type="checkbox"
+                checked={intrabar}
+                onChange={(e) => setIntrabar(e.target.checked)}
+                className="accent-[#2a78d6]"
+              />
+              손절/익절 장중 판정
+            </label>
+          </div>
+          {intrabar && (
+            <p className="text-[11px] leading-relaxed text-neutral-500">
+              장중 저가/고가가 임계값을 터치하면 청산으로 판정합니다 (체결가는 임계값,
+              갭이면 시가). 종가 기준보다 보수적이고 현실적인 결과가 나옵니다.
+            </p>
+          )}
 
           {error && <p className="text-xs leading-relaxed text-[#d03b3b]">{error}</p>}
 
