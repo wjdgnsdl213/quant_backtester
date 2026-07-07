@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
+import { AdvancedModeProvider } from "@/lib/advanced-context";
+import NavHeader from "@/components/NavHeader";
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -27,7 +30,12 @@ export default function RootLayout({
       lang="ko"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col bg-[#f9f9f7] text-[#0b0b0b] dark:bg-[#0d0d0d] dark:text-white">
+        <AdvancedModeProvider>
+          <NavHeader />
+          <div className="flex-1">{children}</div>
+        </AdvancedModeProvider>
+      </body>
     </html>
   );
 }

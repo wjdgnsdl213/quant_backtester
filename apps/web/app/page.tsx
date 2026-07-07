@@ -1,517 +1,87 @@
-"use client";
+import Link from "next/link";
 
-import { useEffect, useState } from "react";
-
-import {
-  fetchStrategies,
-  runBacktest,
-  runCompare,
-  runMonteCarlo,
-  runMultiSymbol,
-  runOptimize,
-  runWalkforward,
-  type BacktestResult,
-  type CompareResult,
-  type MonteCarloResult,
-  type MultiSymbolResult,
-  type OptimizeResult,
-  type StrategyMeta,
-  type WalkforwardResult,
-} from "@/lib/api";
-import { downloadJson, downloadText, tradesToCsv } from "@/lib/export";
-import CandleChart from "@/components/CandleChart";
-import CompareView from "@/components/CompareView";
-import DrawdownChart from "@/components/DrawdownChart";
-import EquityChart from "@/components/EquityChart";
-import MetricsCards from "@/components/MetricsCards";
-import MonteCarloView from "@/components/MonteCarloView";
-import MultiSymbolView from "@/components/MultiSymbolView";
-import OptimizeHeatmap from "@/components/OptimizeHeatmap";
-import OptimizeTable from "@/components/OptimizeTable";
-import OverfitCard from "@/components/OverfitCard";
-import ResultTabs, { type ResultTabId } from "@/components/ResultTabs";
-import StrategyForm, { type FormState, type OptimizeOpts } from "@/components/StrategyForm";
-import TradesTable from "@/components/TradesTable";
-import WalkforwardView from "@/components/WalkforwardView";
-
-const DEFAULT_FORM: FormState = {
-  source: "stock",
-  symbol: "AAPL",
-  interval: "1d",
-  start: "2022-01-01",
-  end: "2024-12-31",
-  strategy: "",
-  params: {},
-  ai: null,
-  fee: 0.001,
-  slippage: 0.0005,
-  initial_capital: 10_000_000,
-};
-
-function Card({
-  title,
-  onClose,
-  children,
-}: {
-  title?: string;
-  onClose?: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-lg border border-black/10 bg-[#fcfcfb] p-4 dark:border-white/10 dark:bg-[#1a1a19]">
-      {(title || onClose) && (
-        <div className="mb-3 flex items-center justify-between">
-          {title && <h2 className="text-sm font-semibold">{title}</h2>}
-          {onClose && (
-            <button
-              type="button"
-              onClick={onClose}
-              className="text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
-            >
-              지우기 ✕
-            </button>
-          )}
-        </div>
-      )}
-      {children}
-    </section>
-  );
-}
-
-function EmptyTab({ message }: { message: string }) {
-  return (
-    <Card>
-      <p className="py-16 text-center text-sm text-neutral-500">{message}</p>
-    </Card>
-  );
-}
+const FEATURES: { title: string; desc: string }[] = [
+  { title: "프리셋 전략 5종", desc: "골든크로스·RSI·볼린저밴드·MACD·모멘텀을 바로 실행" },
+  { title: "AI 전략 생성", desc: "자연어 설명을 Claude가 전략 DSL로 변환, 실행 전 스키마 검증" },
+  { title: "블록 빌더 · JSON 편집", desc: "지표를 조합해 조립하거나 DSL을 직접 작성 — 롱/숏 모두 지원" },
+  { title: "과적합 진단 (IS/OOS)", desc: "학습·검증 구간을 나눠 평가하고 과적합 위험도를 판정" },
+  { title: "파라미터 최적화", desc: "그리드 서치로 최적 조합 탐색, 2D 히트맵으로 안정성 확인" },
+  { title: "워크포워드 · 몬테카를로", desc: "폴드별 재검증과 거래 재배열 시뮬레이션으로 신뢰도 검증" },
+  { title: "멀티 심볼 검증", desc: "같은 전략을 여러 종목에 동시 적용해 범용성 확인" },
+  { title: "전략 저장 · 비교", desc: "마음에 든 전략을 저장하고 여러 개를 한 번에 비교" },
+];
 
 export default function Home() {
-  const [strategies, setStrategies] = useState<StrategyMeta[]>([]);
-  const [form, setForm] = useState<FormState>(DEFAULT_FORM);
-  const [result, setResult] = useState<BacktestResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [engineDown, setEngineDown] = useState(false);
-
-  const [optResult, setOptResult] = useState<OptimizeResult | null>(null);
-  const [optimizing, setOptimizing] = useState(false);
-  const [cmpResult, setCmpResult] = useState<CompareResult | null>(null);
-  const [comparing, setComparing] = useState(false);
-  const [wfResult, setWfResult] = useState<WalkforwardResult | null>(null);
-  const [walkforwarding, setWalkforwarding] = useState(false);
-  const [mcResult, setMcResult] = useState<MonteCarloResult | null>(null);
-  const [montecarloing, setMontecarloing] = useState(false);
-  const [msResult, setMsResult] = useState<MultiSymbolResult | null>(null);
-  const [multiSymboling, setMultiSymboling] = useState(false);
-
-  const [activeTab, setActiveTab] = useState<ResultTabId>("backtest");
-
-  const [advanced, setAdvanced] = useState(false);
-  useEffect(() => {
-    setAdvanced(localStorage.getItem("advancedMode") === "1");
-  }, []);
-  const toggleAdvanced = () => {
-    setAdvanced((v) => {
-      localStorage.setItem("advancedMode", v ? "0" : "1");
-      return !v;
-    });
-  };
-
-  useEffect(() => {
-    fetchStrategies()
-      .then((list) => {
-        setStrategies(list);
-        if (list.length > 0) {
-          setForm((f) => ({
-            ...f,
-            strategy: list[0].id,
-            params: Object.fromEntries(list[0].params.map((p) => [p.key, p.default])),
-          }));
-        }
-      })
-      .catch(() => setEngineDown(true));
-  }, []);
-
-  const runWith = async (f: FormState) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { ai, ...rest } = f;
-      setResult(
-        await runBacktest(
-          ai ? { ...rest, strategy: "custom", dsl: ai.dsl } : rest,
-        ),
-      );
-      setActiveTab("backtest");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "백테스트에 실패했습니다");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const onRun = () => runWith(form);
-
-  const onOptimize = async (opts: OptimizeOpts) => {
-    setOptimizing(true);
-    setError(null);
-    try {
-      setOptResult(
-        await runOptimize({
-          source: form.source,
-          symbol: form.symbol,
-          interval: form.interval,
-          start: form.start,
-          end: form.end,
-          strategy: form.strategy,
-          fee: form.fee,
-          slippage: form.slippage,
-          initial_capital: form.initial_capital,
-          grid: opts.grid,
-          sort_by: opts.sortBy,
-        }),
-      );
-      setActiveTab("optimize");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "최적화에 실패했습니다");
-    } finally {
-      setOptimizing(false);
-    }
-  };
-
-  const onWalkforward = async (opts: {
-    grid: Record<string, number[]> | null;
-    nFolds: number;
-  }) => {
-    setWalkforwarding(true);
-    setError(null);
-    try {
-      setWfResult(
-        await runWalkforward({
-          source: form.source,
-          symbol: form.symbol,
-          interval: form.interval,
-          start: form.start,
-          end: form.end,
-          strategy: form.strategy,
-          fee: form.fee,
-          slippage: form.slippage,
-          initial_capital: form.initial_capital,
-          grid: opts.grid,
-          n_folds: opts.nFolds,
-        }),
-      );
-      setActiveTab("walkforward");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "워크포워드 분석에 실패했습니다");
-    } finally {
-      setWalkforwarding(false);
-    }
-  };
-
-  const onApplyParams = (params: Record<string, number>) => {
-    const next = { ...form, params: { ...form.params, ...params }, ai: null };
-    setForm(next);
-    runWith(next);
-  };
-
-  const onMonteCarlo = async () => {
-    setMontecarloing(true);
-    setError(null);
-    try {
-      const { ai, ...rest } = form;
-      setMcResult(
-        await runMonteCarlo(
-          ai ? { ...rest, strategy: "custom", dsl: ai.dsl } : rest,
-        ),
-      );
-      setActiveTab("montecarlo");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "몬테카를로 시뮬레이션에 실패했습니다");
-    } finally {
-      setMontecarloing(false);
-    }
-  };
-
-  const onMultiSymbol = async (symbols: string[]) => {
-    setMultiSymboling(true);
-    setError(null);
-    try {
-      const { ai } = form;
-      setMsResult(
-        await runMultiSymbol({
-          source: form.source,
-          symbols,
-          interval: form.interval,
-          start: form.start,
-          end: form.end,
-          strategy: ai ? "custom" : form.strategy,
-          params: form.params,
-          dsl: ai?.dsl ?? null,
-          fee: form.fee,
-          slippage: form.slippage,
-          initial_capital: form.initial_capital,
-        }),
-      );
-      setActiveTab("multisymbol");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "멀티 심볼 검증에 실패했습니다");
-    } finally {
-      setMultiSymboling(false);
-    }
-  };
-
-  const onCompare = async (ids: number[]) => {
-    setComparing(true);
-    setError(null);
-    try {
-      setCmpResult(
-        await runCompare({
-          source: form.source,
-          symbol: form.symbol,
-          interval: form.interval,
-          start: form.start,
-          end: form.end,
-          ids,
-          fee: form.fee,
-          slippage: form.slippage,
-          initial_capital: form.initial_capital,
-        }),
-      );
-      setActiveTab("compare");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "전략 비교에 실패했습니다");
-    } finally {
-      setComparing(false);
-    }
-  };
-
   return (
-    <div className="min-h-screen w-full bg-[#f9f9f7] text-[#0b0b0b] dark:bg-[#0d0d0d] dark:text-white">
-      <header className="flex items-center justify-between border-b border-black/10 px-6 py-4 dark:border-white/10">
-        <div>
-          <h1 className="text-lg font-bold">퀀트 백테스트 대시보드</h1>
-          <p className="text-xs text-neutral-500">
-            주식·크립토 시세에 전략을 적용해 성과를 검증합니다
-          </p>
-        </div>
-        <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-neutral-500">
-          고급 모드
-          <button
-            type="button"
-            role="switch"
-            aria-checked={advanced}
-            onClick={toggleAdvanced}
-            className={`relative h-5 w-9 rounded-full transition-colors ${
-              advanced ? "bg-[#2a78d6] dark:bg-[#3987e5]" : "bg-black/20 dark:bg-white/20"
-            }`}
+    <div className="mx-auto flex w-full max-w-screen-xl flex-col gap-16 px-6 py-16 sm:py-24">
+      <section className="flex flex-col items-start gap-5">
+        <span className="rounded-full border border-black/10 px-3 py-1 text-xs font-medium text-neutral-500 dark:border-white/10">
+          주식 · 크립토 퀀트 백테스트
+        </span>
+        <h1 className="max-w-2xl text-3xl font-bold leading-tight tracking-tight sm:text-5xl">
+          전략을 만들고,{" "}
+          <span className="text-[#2a78d6] dark:text-[#3987e5]">과거로 검증</span>
+          하세요.
+        </h1>
+        <p className="max-w-xl text-sm leading-relaxed text-neutral-500 sm:text-base">
+          프리셋을 고르거나, AI에게 설명하거나, 블록을 조립해 전략을 만들고
+          주식·크립토 시세로 백테스트합니다. 과적합 진단·워크포워드·몬테카를로까지 —
+          숫자 하나만 보고 전략을 믿지 않도록 설계했습니다.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-3">
+          <Link
+            href="/backtest"
+            className="rounded-md bg-neutral-900 px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-85 dark:bg-white dark:text-neutral-900"
           >
-            <span
-              className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${
-                advanced ? "left-[18px]" : "left-0.5"
-              }`}
-            />
-          </button>
-        </label>
-      </header>
-
-      <main className="mx-auto flex w-full max-w-screen-2xl flex-col gap-4 p-4 lg:flex-row lg:p-6">
-        <aside className="w-full shrink-0 lg:w-72">
-          <Card title="백테스트 설정">
-            {engineDown ? (
-              <p className="text-sm leading-relaxed text-neutral-500">
-                엔진 서버에 연결할 수 없습니다.
-                <code className="mt-2 block rounded bg-black/5 p-2 text-xs dark:bg-white/10">
-                  cd apps/engine
-                  <br />
-                  .venv\Scripts\uvicorn main:app --reload --port 8000
-                </code>
-              </p>
-            ) : (
-              <StrategyForm
-                strategies={strategies}
-                form={form}
-                onChange={setForm}
-                onRun={onRun}
-                loading={loading}
-                onOptimize={onOptimize}
-                optimizing={optimizing}
-                onCompare={onCompare}
-                comparing={comparing}
-                advanced={advanced}
-                onWalkforward={onWalkforward}
-                walkforwarding={walkforwarding}
-                onMonteCarlo={onMonteCarlo}
-                montecarloing={montecarloing}
-                onMultiSymbol={onMultiSymbol}
-                multiSymboling={multiSymboling}
-              />
-            )}
-          </Card>
-        </aside>
-
-        <div className="flex min-w-0 flex-1 flex-col gap-4">
-          {error && (
-            <div className="rounded-lg border border-[#d03b3b]/40 bg-[#d03b3b]/5 px-4 py-3 text-sm text-[#d03b3b]">
-              {error}
-            </div>
-          )}
-
-          <ResultTabs
-            active={activeTab}
-            onSelect={setActiveTab}
-            hasData={{
-              backtest: !!result,
-              optimize: !!optResult,
-              walkforward: !!wfResult,
-              montecarlo: !!mcResult,
-              multisymbol: !!msResult,
-              compare: !!cmpResult,
-            }}
-          />
-
-          {activeTab === "backtest" &&
-            (result ? (
-              <>
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setResult(null)}
-                    className="text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
-                  >
-                    결과 지우기 ✕
-                  </button>
-                </div>
-                <MetricsCards metrics={result.metrics} />
-                {advanced && (
-                  <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <span className="text-neutral-500">내보내기:</span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        downloadText(
-                          `trades_${result.symbol.replace("/", "-")}.csv`,
-                          tradesToCsv(result.trades),
-                          "text/csv",
-                        )
-                      }
-                      className="rounded border border-black/20 px-2 py-1 font-medium text-neutral-700 hover:opacity-80 dark:border-white/20 dark:text-neutral-200"
-                    >
-                      거래 내역 CSV
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        downloadJson(`backtest_${result.symbol.replace("/", "-")}.json`, result)
-                      }
-                      className="rounded border border-black/20 px-2 py-1 font-medium text-neutral-700 hover:opacity-80 dark:border-white/20 dark:text-neutral-200"
-                    >
-                      결과 전체 JSON
-                    </button>
-                  </div>
-                )}
-                <Card title="과적합 진단 (In-Sample / Out-of-Sample)">
-                  <OverfitCard split={result.split} />
-                </Card>
-                <Card title={`자산 곡선 — ${result.symbol} (${result.interval})`}>
-                  <EquityChart result={result} />
-                </Card>
-                <Card title="낙폭 (Drawdown)">
-                  <DrawdownChart result={result} />
-                </Card>
-                <Card title="가격 차트 · 매매 시점">
-                  <CandleChart result={result} />
-                </Card>
-                <Card title={`거래 내역 (${result.trades.length}건)`}>
-                  <TradesTable trades={result.trades} />
-                </Card>
-              </>
-            ) : (
-              <EmptyTab message="왼쪽에서 종목과 전략을 선택하고 '백테스트 실행'을 눌러주세요." />
-            ))}
-
-          {activeTab === "optimize" &&
-            (optResult ? (
-              <Card
-                title={`파라미터 최적화 — ${optResult.strategy.name}`}
-                onClose={() => setOptResult(null)}
-              >
-                <OptimizeTable
-                  result={optResult}
-                  paramLabels={Object.fromEntries(
-                    optResult.strategy.params.map((p) => [p.key, p.label]),
-                  )}
-                  onApply={onApplyParams}
-                  applying={loading}
-                />
-                {optResult.all_results && (
-                  <OptimizeHeatmap
-                    all={optResult.all_results}
-                    paramLabels={Object.fromEntries(
-                      optResult.strategy.params.map((p) => [p.key, p.label]),
-                    )}
-                  />
-                )}
-              </Card>
-            ) : (
-              <EmptyTab message="왼쪽 '검증 도구'에서 파라미터 최적화를 실행하면 여기에 결과가 표시됩니다." />
-            ))}
-
-          {activeTab === "walkforward" &&
-            (wfResult ? (
-              <Card
-                title={`워크포워드 분석 — ${wfResult.strategy.name}`}
-                onClose={() => setWfResult(null)}
-              >
-                <WalkforwardView
-                  result={wfResult}
-                  paramLabels={Object.fromEntries(
-                    wfResult.strategy.params.map((p) => [p.key, p.label]),
-                  )}
-                />
-              </Card>
-            ) : (
-              <EmptyTab message="고급 모드의 '검증 도구'에서 워크포워드 분석을 실행하면 여기에 결과가 표시됩니다." />
-            ))}
-
-          {activeTab === "montecarlo" &&
-            (mcResult ? (
-              <Card
-                title={`몬테카를로 — ${mcResult.strategy.name} (${mcResult.n_sims.toLocaleString()}회 시뮬레이션)`}
-                onClose={() => setMcResult(null)}
-              >
-                <MonteCarloView result={mcResult} />
-              </Card>
-            ) : (
-              <EmptyTab message="왼쪽 '검증 도구'에서 몬테카를로 시뮬레이션을 실행하면 여기에 결과가 표시됩니다." />
-            ))}
-
-          {activeTab === "multisymbol" &&
-            (msResult ? (
-              <Card
-                title={`멀티 심볼 검증 — ${msResult.strategy.name}`}
-                onClose={() => setMsResult(null)}
-              >
-                <MultiSymbolView result={msResult} />
-              </Card>
-            ) : (
-              <EmptyTab message="왼쪽 '검증 도구'에서 여러 종목을 입력하고 검증을 실행하면 여기에 결과가 표시됩니다." />
-            ))}
-
-          {activeTab === "compare" &&
-            (cmpResult ? (
-              <Card
-                title={`전략 비교 — ${cmpResult.symbol} (${cmpResult.interval})`}
-                onClose={() => setCmpResult(null)}
-              >
-                <CompareView result={cmpResult} />
-              </Card>
-            ) : (
-              <EmptyTab message="왼쪽 '저장된 전략'에서 2개 이상 선택 후 비교를 실행하면 여기에 결과가 표시됩니다." />
-            ))}
+            백테스트 시작하기
+          </Link>
+          <Link
+            href="/strategies"
+            className="rounded-md border border-black/20 px-5 py-2.5 text-sm font-medium text-neutral-700 transition-opacity hover:opacity-80 dark:border-white/20 dark:text-neutral-200"
+          >
+            저장된 전략 보기
+          </Link>
         </div>
-      </main>
+      </section>
+
+      <section>
+        <h2 className="mb-5 text-sm font-semibold text-neutral-500">주요 기능</h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {FEATURES.map((f) => (
+            <div
+              key={f.title}
+              className="rounded-lg border border-black/10 bg-[#fcfcfb] p-4 transition-colors hover:border-[#2a78d6]/40 dark:border-white/10 dark:bg-[#1a1a19] dark:hover:border-[#3987e5]/40"
+            >
+              <h3 className="text-sm font-semibold">{f.title}</h3>
+              <p className="mt-1.5 text-xs leading-relaxed text-neutral-500">{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-black/10 bg-[#fcfcfb] p-6 dark:border-white/10 dark:bg-[#1a1a19] sm:p-8">
+        <h2 className="text-sm font-semibold text-neutral-500">시작하는 방법</h2>
+        <ol className="mt-4 flex flex-col gap-3 text-sm leading-relaxed sm:grid sm:grid-cols-3 sm:gap-6">
+          <li>
+            <span className="mb-1 block text-xs font-semibold text-[#2a78d6] dark:text-[#3987e5]">
+              1. 전략 선택
+            </span>
+            프리셋을 고르거나 AI·블록·JSON으로 나만의 전략을 만듭니다.
+          </li>
+          <li>
+            <span className="mb-1 block text-xs font-semibold text-[#2a78d6] dark:text-[#3987e5]">
+              2. 백테스트 · 검증
+            </span>
+            종목·기간을 정해 실행하고, 과적합 진단·최적화·워크포워드·몬테카를로로 신뢰도를 확인합니다.
+          </li>
+          <li>
+            <span className="mb-1 block text-xs font-semibold text-[#2a78d6] dark:text-[#3987e5]">
+              3. 저장 · 비교
+            </span>
+            마음에 든 전략을 저장하고, 여러 종목·전략을 한 번에 비교합니다.
+          </li>
+        </ol>
+      </section>
     </div>
   );
 }

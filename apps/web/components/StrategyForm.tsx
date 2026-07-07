@@ -3,14 +3,11 @@
 import { useEffect, useState } from "react";
 
 import {
-  deleteSavedStrategy,
   fetchIndicators,
-  fetchSavedStrategies,
   generateStrategy,
   saveStrategy,
   type GeneratedStrategy,
   type IndicatorSpec,
-  type SavedStrategy,
   type StrategyMeta,
 } from "@/lib/api";
 import BlockBuilder from "@/components/BlockBuilder";
@@ -76,15 +73,11 @@ export default function StrategyForm({
   loading,
   onOptimize,
   optimizing,
-  onCompare,
-  comparing,
   advanced,
   onWalkforward,
   walkforwarding,
   onMonteCarlo,
   montecarloing,
-  onMultiSymbol,
-  multiSymboling,
 }: {
   strategies: StrategyMeta[];
   form: FormState;
@@ -93,15 +86,11 @@ export default function StrategyForm({
   loading: boolean;
   onOptimize: (opts: OptimizeOpts) => void;
   optimizing: boolean;
-  onCompare: (ids: number[]) => void;
-  comparing: boolean;
   advanced: boolean;
   onWalkforward: (opts: { grid: Record<string, number[]> | null; nFolds: number }) => void;
   walkforwarding: boolean;
   onMonteCarlo: () => void;
   montecarloing: boolean;
-  onMultiSymbol: (symbols: string[]) => void;
-  multiSymboling: boolean;
 }) {
   const selected = strategies.find((s) => s.id === form.strategy);
 
@@ -109,9 +98,8 @@ export default function StrategyForm({
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
-  const [saved, setSaved] = useState<SavedStrategy[]>([]);
   const [saveBusy, setSaveBusy] = useState(false);
-  const [compareIds, setCompareIds] = useState<number[]>([]);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
   const [indicators, setIndicators] = useState<IndicatorSpec[]>([]);
   const [builderOpen, setBuilderOpen] = useState(false);
@@ -121,14 +109,6 @@ export default function StrategyForm({
   const [gridText, setGridText] = useState<Record<string, string>>({});
   const [sortBy, setSortBy] = useState<OptimizeOpts["sortBy"]>("is_sharpe");
   const [nFolds, setNFolds] = useState(4);
-
-  const [multiText, setMultiText] = useState("");
-
-  const parseSymbols = (): string[] =>
-    multiText
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
 
   const parseGrid = (): Record<string, number[]> | null => {
     if (!advanced || !selected) return null;
@@ -146,37 +126,20 @@ export default function StrategyForm({
   };
 
   useEffect(() => {
-    fetchSavedStrategies().then(setSaved).catch(() => {});
     fetchIndicators().then(setIndicators).catch(() => {});
   }, []);
-
-  const toggleCompare = (id: number) =>
-    setCompareIds((ids) =>
-      ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id],
-    );
 
   const onSave = async () => {
     if (!form.ai) return;
     setSaveBusy(true);
-    setAiError(null);
+    setSaveMsg(null);
     try {
       await saveStrategy(form.ai.dsl);
-      setSaved(await fetchSavedStrategies());
+      setSaveMsg("저장했습니다 — '저장된 전략' 페이지에서 확인하세요.");
     } catch (e) {
-      setAiError(e instanceof Error ? e.message : "전략 저장에 실패했습니다");
+      setSaveMsg(e instanceof Error ? e.message : "전략 저장에 실패했습니다");
     } finally {
       setSaveBusy(false);
-    }
-  };
-
-  const onDeleteSaved = async (id: number) => {
-    try {
-      await deleteSavedStrategy(id);
-      setSaved((list) => list.filter((s) => s.id !== id));
-      setCompareIds((ids) => ids.filter((i) => i !== id));
-    } catch {
-      // 삭제 실패는 목록 새로고침으로 복구
-      fetchSavedStrategies().then(setSaved).catch(() => {});
     }
   };
 
@@ -424,6 +387,9 @@ export default function StrategyForm({
               <p className="mt-1 text-xs leading-relaxed text-neutral-500">
                 {form.ai.summary}
               </p>
+              {saveMsg && (
+                <p className="mt-1 text-[11px] leading-relaxed text-neutral-500">{saveMsg}</p>
+              )}
               <p className="mt-1.5 text-[11px] text-[#2a78d6] dark:text-[#3987e5]">
                 백테스트 실행 시 위 프리셋 대신 이 전략이 사용됩니다
               </p>
@@ -450,57 +416,6 @@ export default function StrategyForm({
           )}
         </div>
       </details>
-
-      {/* 저장된 전략 */}
-      {saved.length > 0 && (
-        <details className={sectionCls} open>
-          <summary className={sectionTitleCls}>저장된 전략 ({saved.length})</summary>
-          <ul className="mt-2 flex flex-col gap-1">
-            {saved.map((s) => (
-              <li key={s.id} className="flex items-center gap-1.5">
-                <input
-                  type="checkbox"
-                  aria-label={`${s.name} 비교 선택`}
-                  checked={compareIds.includes(s.id)}
-                  onChange={() => toggleCompare(s.id)}
-                  className="shrink-0 accent-[#2a78d6]"
-                />
-                <button
-                  type="button"
-                  title={s.summary}
-                  onClick={() =>
-                    onChange({
-                      ...form,
-                      ai: { dsl: s.dsl, name: s.name, summary: s.summary },
-                    })
-                  }
-                  className="min-w-0 flex-1 truncate rounded px-2 py-1 text-left text-xs hover:bg-black/5 dark:hover:bg-white/10"
-                >
-                  {s.name}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onDeleteSaved(s.id)}
-                  aria-label={`${s.name} 삭제`}
-                  className="shrink-0 rounded px-1 text-xs text-neutral-400 hover:text-[#d03b3b]"
-                >
-                  ✕
-                </button>
-              </li>
-            ))}
-          </ul>
-          <button
-            type="button"
-            disabled={comparing || compareIds.length < 2 || compareIds.length > 8}
-            onClick={() => onCompare(compareIds)}
-            className="mt-2 w-full rounded-md border border-black/20 px-2 py-1.5 text-xs font-medium text-neutral-700 transition-opacity hover:opacity-80 disabled:opacity-40 dark:border-white/20 dark:text-neutral-200"
-          >
-            {comparing
-              ? "비교 중…"
-              : `선택 전략 비교 (${compareIds.length}개 선택, 2~8개)`}
-          </button>
-        </details>
-      )}
 
       {/* 거래 비용 · 초기 자본 */}
       <details className={sectionCls}>
@@ -579,7 +494,7 @@ export default function StrategyForm({
         {loading ? "백테스트 실행 중…" : "백테스트 실행"}
       </button>
 
-      {/* 검증 도구 — 최적화 · 워크포워드(고급) · 몬테카를로 · 멀티심볼 */}
+      {/* 검증 도구 — 최적화 · 워크포워드(고급) · 몬테카를로 */}
       <details className={sectionCls}>
         <summary className={sectionTitleCls}>검증 도구</summary>
         <div className="mt-2 flex flex-col gap-2">
@@ -665,30 +580,6 @@ export default function StrategyForm({
           >
             {montecarloing ? "몬테카를로 시뮬레이션 중…" : "몬테카를로 (수익 신뢰구간)"}
           </button>
-
-          <div className="rounded-md border border-black/10 p-2.5 dark:border-white/10">
-            <label className={labelCls} htmlFor="multi-symbols">
-              멀티 심볼 검증 (쉼표 구분, 2~8개)
-            </label>
-            <input
-              id="multi-symbols"
-              className={inputCls}
-              placeholder={QUICK_SYMBOLS[form.source].slice(0, 3).join(", ")}
-              spellCheck={false}
-              value={multiText}
-              onChange={(e) => setMultiText(e.target.value)}
-            />
-            <button
-              type="button"
-              onClick={() => onMultiSymbol(parseSymbols())}
-              disabled={multiSymboling || parseSymbols().length < 2 || parseSymbols().length > 8}
-              className="mt-1.5 w-full rounded-md border border-black/20 px-2 py-1.5 text-xs font-medium text-neutral-700 transition-opacity hover:opacity-80 disabled:opacity-40 dark:border-white/20 dark:text-neutral-200"
-            >
-              {multiSymboling
-                ? "여러 종목 백테스트 중… (첫 실행은 다운로드로 느릴 수 있음)"
-                : `현재 전략을 ${parseSymbols().length || "여러"}개 종목에서 검증`}
-            </button>
-          </div>
         </div>
       </details>
 
