@@ -78,6 +78,8 @@ export default function StrategyForm({
   walkforwarding,
   onMonteCarlo,
   montecarloing,
+  onScore,
+  scoring,
 }: {
   strategies: StrategyMeta[];
   form: FormState;
@@ -91,6 +93,8 @@ export default function StrategyForm({
   walkforwarding: boolean;
   onMonteCarlo: () => void;
   montecarloing: boolean;
+  onScore: () => void;
+  scoring: boolean;
 }) {
   const selected = strategies.find((s) => s.id === form.strategy);
 
@@ -579,6 +583,16 @@ export default function StrategyForm({
             className="rounded-md border border-black/20 px-3 py-1.5 text-xs font-medium text-neutral-700 transition-opacity hover:opacity-80 disabled:opacity-40 dark:border-white/20 dark:text-neutral-200"
           >
             {montecarloing ? "몬테카를로 시뮬레이션 중…" : "몬테카를로 (수익 신뢰구간)"}
+          </button>
+
+          <button
+            type="button"
+            onClick={onScore}
+            disabled={scoring || !form.symbol.trim()}
+            title="IS/OOS·구간 일관성·몬테카를로·거래 표본을 하나의 A~F 등급으로 종합합니다"
+            className="rounded-md border border-black/20 px-3 py-1.5 text-xs font-medium text-neutral-700 transition-opacity hover:opacity-80 disabled:opacity-40 dark:border-white/20 dark:text-neutral-200"
+          >
+            {scoring ? "신뢰 점수 계산 중…" : "신뢰 점수 (종합 등급)"}
           </button>
         </div>
       </details>

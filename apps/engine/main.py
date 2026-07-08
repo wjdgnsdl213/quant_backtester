@@ -25,6 +25,7 @@ import backtester
 import metrics
 import montecarlo
 import optimizer
+import scoring
 import signals
 import store
 import strategies
@@ -228,6 +229,27 @@ def run_montecarlo(req: MonteCarloRequest):
                 **montecarlo.run(result["trades"], req.n_sims, req.initial_capital)}
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+class ScoreRequest(BacktestRequest):
+    n_sims: int = Field(1000, ge=100, le=5000)
+
+
+@app.post("/score")
+def run_score(req: ScoreRequest):
+    """전략 신뢰 점수 — IS/OOS·구간 일관성·몬테카를로·거래 표본을 A~F 등급으로 종합."""
+    dsl, strategy_info = _resolve_dsl(req.strategy, req.params, req.dsl)
+    df = _load_df(req.source, req.symbol, req.interval, req.start, req.end)
+    signal, fills = compiler.compile_strategy(dsl, df)
+    result = backtester.run(df, signal, req.fee, req.slippage, req.initial_capital, fills)
+    ppy = metrics.periods_per_year(req.source, req.interval)
+    split = metrics.compute_split(result, ppy)
+    return {
+        "symbol": req.symbol.strip(),
+        "interval": req.interval,
+        "strategy": strategy_info,
+        **scoring.compute(result, split, ppy, req.initial_capital, req.n_sims),
+    }
 
 
 class MultiSymbolRequest(BaseModel):

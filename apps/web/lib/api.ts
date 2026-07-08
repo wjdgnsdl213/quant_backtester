@@ -268,6 +268,34 @@ export async function runMonteCarlo(req: MonteCarloRequest): Promise<MonteCarloR
   return postJson("/montecarlo", req, "몬테카를로 시뮬레이션 실패");
 }
 
+export type ScoreComponent = {
+  id: "is_oos" | "consistency" | "montecarlo" | "trades";
+  label: string;
+  weight: number;
+  available: boolean;
+  score: number | null;
+  detail: string;
+  segments?: SegmentMetrics[];
+};
+
+export type ScoreResult = {
+  symbol: string;
+  interval: string;
+  strategy: { id: string; name: string; params: Record<string, number> };
+  grade: "A" | "B" | "C" | "D" | "F";
+  grade_label: string;
+  score: number;
+  components: ScoreComponent[];
+  warnings: string[];
+  note: string;
+};
+
+export type ScoreRequest = BacktestRequest & { n_sims?: number };
+
+export async function runScore(req: ScoreRequest): Promise<ScoreResult> {
+  return postJson("/score", req, "신뢰 점수 계산 실패");
+}
+
 export type MultiSymbolItem = {
   symbol: string;
   metrics: Metrics;

@@ -7,10 +7,12 @@ import {
   runBacktest,
   runMonteCarlo,
   runOptimize,
+  runScore,
   runWalkforward,
   type BacktestResult,
   type MonteCarloResult,
   type OptimizeResult,
+  type ScoreResult,
   type StrategyMeta,
   type WalkforwardResult,
 } from "@/lib/api";
@@ -25,6 +27,7 @@ import OptimizeHeatmap from "@/components/OptimizeHeatmap";
 import OptimizeTable from "@/components/OptimizeTable";
 import OverfitCard from "@/components/OverfitCard";
 import ResultTabs, { type ResultTabId } from "@/components/ResultTabs";
+import ScoreCard from "@/components/ScoreCard";
 import StrategyForm, { type FormState, type OptimizeOpts } from "@/components/StrategyForm";
 import TradesTable from "@/components/TradesTable";
 import WalkforwardView from "@/components/WalkforwardView";
@@ -97,6 +100,8 @@ export default function BacktestPage() {
   const [walkforwarding, setWalkforwarding] = useState(false);
   const [mcResult, setMcResult] = useState<MonteCarloResult | null>(null);
   const [montecarloing, setMontecarloing] = useState(false);
+  const [scoreResult, setScoreResult] = useState<ScoreResult | null>(null);
+  const [scoring, setScoring] = useState(false);
 
   const [activeTab, setActiveTab] = useState<ResultTabId>("backtest");
 
@@ -216,6 +221,22 @@ export default function BacktestPage() {
     }
   };
 
+  const onScore = async () => {
+    setScoring(true);
+    setError(null);
+    try {
+      const { ai, ...rest } = form;
+      setScoreResult(
+        await runScore(ai ? { ...rest, strategy: "custom", dsl: ai.dsl } : rest),
+      );
+      setActiveTab("score");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "신뢰 점수 계산에 실패했습니다");
+    } finally {
+      setScoring(false);
+    }
+  };
+
   return (
     <div className="mx-auto flex w-full max-w-screen-2xl flex-col gap-4 p-4 lg:flex-row lg:p-6">
       <aside className="w-full shrink-0 lg:w-72">
@@ -243,6 +264,8 @@ export default function BacktestPage() {
               walkforwarding={walkforwarding}
               onMonteCarlo={onMonteCarlo}
               montecarloing={montecarloing}
+              onScore={onScore}
+              scoring={scoring}
             />
           )}
         </Card>
@@ -263,6 +286,7 @@ export default function BacktestPage() {
             optimize: !!optResult,
             walkforward: !!wfResult,
             montecarlo: !!mcResult,
+            score: !!scoreResult,
           }}
         />
 
@@ -380,6 +404,18 @@ export default function BacktestPage() {
             </Card>
           ) : (
             <EmptyTab message="왼쪽 '검증 도구'에서 몬테카를로 시뮬레이션을 실행하면 여기에 결과가 표시됩니다." />
+          ))}
+
+        {activeTab === "score" &&
+          (scoreResult ? (
+            <Card
+              title={`신뢰 점수 — ${scoreResult.strategy.name}`}
+              onClose={() => setScoreResult(null)}
+            >
+              <ScoreCard result={scoreResult} />
+            </Card>
+          ) : (
+            <EmptyTab message="왼쪽 '검증 도구'에서 신뢰 점수를 계산하면 여기에 결과가 표시됩니다." />
           ))}
       </div>
     </div>

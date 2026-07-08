@@ -1,12 +1,13 @@
 "use client";
 
-export type ResultTabId = "backtest" | "optimize" | "walkforward" | "montecarlo";
+export type ResultTabId = "backtest" | "optimize" | "walkforward" | "montecarlo" | "score";
 
 const TABS: { id: ResultTabId; label: string }[] = [
   { id: "backtest", label: "백테스트" },
   { id: "optimize", label: "최적화" },
   { id: "walkforward", label: "워크포워드" },
   { id: "montecarlo", label: "몬테카를로" },
+  { id: "score", label: "신뢰 점수" },
 ];
 
 export default function ResultTabs({
